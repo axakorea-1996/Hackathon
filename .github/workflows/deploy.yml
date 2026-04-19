@@ -1,42 +1,85 @@
 name: Spring Boot CI/CD to AWS EC2
 
-# 1. 언제 이 대본을 실행할 것인가?
 on:
   push:
-    branches: [ "main" ] # main 브랜치에 코드가 올라올 때마다
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest # GitHub가 빌려주는 최신 컴퓨터 사용
+    runs-on: ubuntu-latest
 
     steps:
-    # 2. 깃허브 창고에서 최신 코드 가져오기
-    - name: Checkout Source Code
-      uses: actions/checkout@v4
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-    # 3. 도커 허브(냉동 창고) 로그인
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    # 4. 도커 이미지 요리하고 냉동 창고에 밀어넣기
-    - name: Build and Push Docker Image
-      run: |
-        cd subscription  # Dockerfile이 있는 폴더로 이동!
-        docker build -t ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest .
-        docker push ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+      - name: Build and Push Docker Image
+        run: |
+          cd subscription
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
 
-    # 5. AWS EC2(식당)에 접속해서 새 요리 서빙하기
-    - name: Deploy to AWS EC2
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          sudo docker pull ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
-          sudo docker stop spring-app || true
-          sudo docker rm spring-app || true
-          sudo docker run -d -p 80:8080 --name spring-app ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+      - name: Deploy to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+            sudo docker stop spring-app || true
+            sudo docker rm spring-app || true
+            sudo docker run -d -p 80:8080 --name spring-app ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+
+      - name: Slack Notify - Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *배포 성공!*",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
+                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
+                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
+                    { "title": "커밋한 사람", "value": "${{ github.actor }}", "short": true },
+                    { "title": "Actions 링크", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Slack Notify - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *배포 실패!*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
+                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
+                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
+                    { "title": "실패한 사람", "value": "${{ github.actor }}", "short": true },
+                    { "title": "❗ 에러 로그 확인", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
