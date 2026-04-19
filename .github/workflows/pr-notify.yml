@@ -1,0 +1,31 @@
+name: PR Slack Notify
+
+on:
+  pull_request:
+    types: [opened, reopened]  # PR이 새로 열릴 때
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack Notify - PR Opened
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔔 *새 PR이 올라왔어요!*",
+              "attachments": [
+                {
+                  "color": "#0075ff",
+                  "fields": [
+                    { "title": "PR 제목", "value": "${{ github.event.pull_request.title }}", "short": false },
+                    { "title": "작성자", "value": "${{ github.actor }}", "short": true },
+                    { "title": "base ← head", "value": "${{ github.event.pull_request.base.ref }} ← ${{ github.event.pull_request.head.ref }}", "short": true },
+                    { "title": "PR 링크", "value": "${{ github.event.pull_request.html_url }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
