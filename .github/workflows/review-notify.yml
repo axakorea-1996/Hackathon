@@ -1,0 +1,46 @@
+name: Review Slack Notify
+
+on:
+  pull_request_review:
+    types: [submitted]  # 리뷰가 제출될 때 (AI 리뷰 포함)
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set Review Status Emoji
+        id: status
+        run: |
+          if [ "${{ github.event.review.state }}" = "approved" ]; then
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "label=승인됨 (Approved)" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.review.state }}" = "changes_requested" ]; then
+            echo "emoji=🔴" >> $GITHUB_OUTPUT
+            echo "label=수정 요청 (Changes Requested)" >> $GITHUB_OUTPUT
+          else
+            echo "emoji=💬" >> $GITHUB_OUTPUT
+            echo "label=코멘트 (Commented)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Slack Notify - Review Submitted
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.emoji }} *PR 리뷰가 달렸어요!*",
+              "attachments": [
+                {
+                  "color": "#9b59b6",
+                  "fields": [
+                    { "title": "PR 제목", "value": "${{ github.event.pull_request.title }}", "short": false },
+                    { "title": "리뷰어", "value": "${{ github.event.review.user.login }}", "short": true },
+                    { "title": "리뷰 상태", "value": "${{ steps.status.outputs.label }}", "short": true },
+                    { "title": "리뷰 내용 (요약)", "value": "${{ github.event.review.body }}", "short": false },
+                    { "title": "리뷰 링크", "value": "${{ github.event.review.html_url }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
