@@ -36,9 +36,10 @@ jobs:
             sudo docker rm spring-app || true
             sudo docker run -d -p 80:8080 \
               -e OPENROUTER_API_KEY='${{ secrets.OPENROUTER_API_KEY }}' \
+              -e GITHUB_TOKEN='${{ secrets.AXA_GITHUB_TOKEN }}' \
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
-
+     
       - name: Slack Notify - Success
         if: success()
         uses: slackapi/slack-github-action@v1.26.0
