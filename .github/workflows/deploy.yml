@@ -49,7 +49,7 @@ jobs:
                   "fields": [
                     { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
                     { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ toJSON(github.event.head_commit.message) }}", "short": false },
+                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
                     { "title": "커밋한 사람", "value": "${{ github.actor }}", "short": true },
                     { "title": "Actions 링크", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                   ]
@@ -73,7 +73,7 @@ jobs:
                   "fields": [
                     { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
                     { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ toJSON(github.event.head_commit.message) }}", "short": false },
+                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
                     { "title": "실패한 사람", "value": "${{ github.actor }}", "short": true },
                     { "title": "❗ 에러 로그 확인", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                   ]
