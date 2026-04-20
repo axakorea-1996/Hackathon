@@ -34,7 +34,10 @@ jobs:
             sudo docker pull ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
             sudo docker stop spring-app || true
             sudo docker rm spring-app || true
-            sudo docker run -d -p 80:8080 --name spring-app ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+            sudo docker run -d -p 80:8080 \
+              -e OPENROUTER_API_KEY='${{ secrets.OPENROUTER_API_KEY }}' \
+              --name spring-app \
+              ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
 
       - name: Slack Notify - Success
         if: success()
