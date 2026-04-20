@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+openrouter:
+  api:
+    key: ${OPENROUTER_API_KEY}
+    url: https://openrouter.ai/api/v1/chat/completions
+    model: openai/gpt-4o-mini
+
+github:
+  token: ${GITHUB_TOKEN}
+
+spring:
+  task:
+    execution:
+      pool:
+        core-size: 4
+
+logging:
+  level:
+    com.axakorea: DEBUG
