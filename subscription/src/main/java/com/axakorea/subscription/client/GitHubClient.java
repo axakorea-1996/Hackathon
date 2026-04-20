@@ -8,6 +8,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -87,5 +88,44 @@ public class GitHubClient {
         headers.set("Accept", "application/vnd.github+json");
         headers.set("X-GitHub-Api-Version", "2022-11-28");
         return headers;
+    }
+
+    /**
+     * GitHub API로 특정 디렉토리의 파일 목록 재귀 조회
+     * 새 파일 추가해도 자동으로 인식
+     */
+    public List<String> getFilesInDirectory(String repo, String dirPath) {
+        List<String> result = new ArrayList<>();
+        collectFiles(repo, dirPath, result);
+        return result;
+    }
+
+    private void collectFiles(String repo, String dirPath, List<String> result) {
+        String url = BASE_URL + "/repos/%s/contents/%s".formatted(repo, dirPath);
+
+        try {
+            ResponseEntity<List<Map>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(githubHeaders()),
+                    new ParameterizedTypeReference<>() {}
+            );
+
+            List<Map> items = response.getBody();
+            if (items == null) return;
+
+            for (Map item : items) {
+                String type = (String) item.get("type");
+                String path = (String) item.get("path");
+
+                if ("file".equals(type)) {
+                    result.add(path);                    // 파일이면 추가
+                } else if ("dir".equals(type)) {
+                    collectFiles(repo, path, result);    // 디렉토리면 재귀 탐색
+                }
+            }
+        } catch (Exception e) {
+            log.warn("디렉토리 조회 실패: {} - {}", dirPath, e.getMessage());
+        }
     }
 }
