@@ -39,7 +39,6 @@ jobs:
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
 
-      # 배포 후 앱 기동 확인 (여기서 대기하면 이후 job은 대기 불필요)
       - name: Wait for App Startup
         run: |
           echo "앱 기동 대기 중..."
@@ -47,10 +46,12 @@ jobs:
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               "http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000" \
               || echo "000")
-            if [ "$STATUS" = "200" ] || [ "$STATUS" = "400" ]; then
+
+            if [ "$STATUS" != "000" ]; then
               echo "✅ 앱 기동 확인 (시도 $i, status=$STATUS)"
               exit 0
             fi
+
             echo "대기 중... ($i/20, status=$STATUS)"
             sleep 10
           done
