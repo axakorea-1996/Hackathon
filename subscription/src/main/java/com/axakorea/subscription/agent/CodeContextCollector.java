@@ -17,16 +17,24 @@ public class CodeContextCollector {
 
     private final GitHubClient gitHubClient;
 
+    /**
+     * GitHub API로 레포의 실제 파일 목록 자동 수집
+     * 하드코딩 없이 새 파일 추가해도 자동으로 인식
+     */
     public String collectRelatedContext(String repo, List<ChangedFile> changedFiles) {
         StringBuilder context = new StringBuilder();
         Set<String> visited = new HashSet<>();
 
         for (ChangedFile changed : changedFiles) {
-            List<String> relatedPaths = inferRelatedFiles(changed.getFilename());
+            String base = extractBasePath(changed.getFilename());
 
-            for (String path : relatedPaths) {
+            // GitHub API로 실제 파일 목록 가져오기
+            List<String> allFiles = gitHubClient.getFilesInDirectory(repo, base);
+
+            for (String path : allFiles) {
                 if (changed.getFilename().equals(path)) continue;
                 if (visited.contains(path)) continue;
+                if (!path.endsWith(".java")) continue;  // java 파일만
                 visited.add(path);
 
                 String content = gitHubClient.getFileContent(repo, path);
@@ -38,55 +46,6 @@ public class CodeContextCollector {
             }
         }
         return context.toString();
-    }
-
-    private List<String> inferRelatedFiles(String changedFile) {
-        String base = extractBasePath(changedFile);
-
-        if (changedFile.contains("Controller")) {
-            return List.of(
-                    base + "service/SubscriptionService.java",
-                    base + "dto/SubscriptionRequestDto.java",
-                    base + "dto/SubscriptionResponseDto.java",
-                    base + "common/response/ApiResponse.java"
-            );
-        }
-        if (changedFile.contains("Service")) {
-            return List.of(
-                    base + "controller/SubscriptionController.java",
-                    base + "repository/SubscriptionRepository.java",
-                    base + "repository/CustomerRepository.java",
-                    base + "domain/Subscription.java",
-                    base + "domain/Customer.java",
-                    base + "dto/SubscriptionRequestDto.java",
-                    base + "dto/SubscriptionResponseDto.java"
-            );
-        }
-        if (changedFile.contains("Repository")) {
-            return List.of(
-                    base + "service/SubscriptionService.java",
-                    base + "domain/Subscription.java",
-                    base + "domain/Customer.java",
-                    base + "domain/Vehicle.java"
-            );
-        }
-        if (changedFile.contains("domain/")) {
-            return List.of(
-                    base + "service/SubscriptionService.java",
-                    base + "repository/SubscriptionRepository.java"
-            );
-        }
-        if (changedFile.contains("dto/")) {
-            return List.of(
-                    base + "controller/SubscriptionController.java",
-                    base + "service/SubscriptionService.java"
-            );
-        }
-        return List.of(
-                base + "controller/SubscriptionController.java",
-                base + "service/SubscriptionService.java",
-                base + "repository/SubscriptionRepository.java"
-        );
     }
 
     /**
