@@ -47,4 +47,157 @@ jobs:
               "http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000" \
               || echo "000")
 
-            if
+            if [ "$STATUS" != "000" ]; then
+              echo "✅ 앱 기동 확인 (시도 $i, status=$STATUS)"
+              exit 0
+            fi
+
+            echo "대기 중... ($i/20, status=$STATUS)"
+            sleep 10
+          done
+          echo "❌ 앱 기동 타임아웃"
+          exit 1
+
+      - name: Slack Notify - Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *배포 성공!*",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    { "title": "레포지토리", "value": ${{ toJSON(github.repository) }}, "short": true },
+                    { "title": "브랜치", "value": ${{ toJSON(github.ref_name) }}, "short": true },
+                    { "title": "커밋 메시지", "value": ${{ toJSON(github.event.head_commit.message) }}, "short": false },
+                    { "title": "커밋한 사람", "value": ${{ toJSON(github.actor) }}, "short": true },
+                    { "title": "Actions 링크", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Slack Notify - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *배포 실패!*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    { "title": "레포지토리", "value": ${{ toJSON(github.repository) }}, "short": true },
+                    { "title": "브랜치", "value": ${{ toJSON(github.ref_name) }}, "short": true },
+                    { "title": "커밋 메시지", "value": ${{ toJSON(github.event.head_commit.message) }}, "short": false },
+                    { "title": "실패한 사람", "value": ${{ toJSON(github.actor) }}, "short": true },
+                    { "title": "❗ 에러 로그 확인", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  create-pr:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.create_pr.outputs.pr_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create PR (dev → main)
+        id: create_pr
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          GITHUB_TOKEN_VAL: ${{ secrets.AXA_GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: python3 .github/scripts/create_pr.py
+
+      - name: Trigger Webhook Manually
+        if: steps.create_pr.outputs.pr_number != ''
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
+        run: python3 .github/scripts/trigger_webhook.py
+
+  ui-test:
+    needs: create-pr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: Run UI Test
+        env:
+          TEST_BASE_URL: http://${{ secrets.EC2_HOST }}
+          AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/ui_test_agent.py
+
+      - name: Slack Notify - UI Test Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🧪 *UI 테스트 완료!*",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    { "title": "PR 번호", "value": ${{ toJSON(needs.create-pr.outputs.pr_number) }}, "short": true },
+                    { "title": "결과", "value": "PR 코멘트 확인", "short": true },
+                    { "title": "PR 링크", "value": ${{ toJSON(format('{0}/{1}/pull/{2}', github.server_url, github.repository, needs.create-pr.outputs.pr_number)) }}, "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Slack Notify - UI Test Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *UI 테스트 실패!*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    { "title": "PR 번호", "value": ${{ toJSON(needs.create-pr.outputs.pr_number) }}, "short": true },
+                    { "title": "Actions 링크", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
