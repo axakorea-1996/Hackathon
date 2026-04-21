@@ -2,7 +2,7 @@ name: UI Test
 
 on:
   workflow_run:
-    workflows: ["Spring Boot CI/CD to AWS EC2"]
+    workflows: ["Auto PR"]
     types: [completed]
 
 jobs:
@@ -23,27 +23,6 @@ jobs:
         run: |
           pip install playwright requests
           playwright install chromium --with-deps
-
-      # SubscriptionController의 GET /api/subscriptions/my 로 헬스체크
-      # 200(정상) or 400(파라미터 오류) 둘 다 앱이 떠있는 것으로 판단
-      - name: Wait for App Health Check
-        run: |
-          echo "앱 기동 대기 중..."
-          for i in $(seq 1 20); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000" \
-              || echo "000")
-
-            if [ "$STATUS" = "200" ] || [ "$STATUS" = "400" ]; then
-              echo "✅ 앱 기동 확인 (시도 $i, status=$STATUS)"
-              exit 0
-            fi
-
-            echo "대기 중... ($i/20, status=$STATUS)"
-            sleep 10
-          done
-          echo "❌ 앱 기동 타임아웃 (200초 초과)"
-          exit 1
 
       - name: Get PR Number
         id: get_pr
