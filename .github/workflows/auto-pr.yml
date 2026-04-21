@@ -12,8 +12,8 @@ jobs:
 
     steps:
       - name: Create PR (dev → main)
+        id: create_pr
         run: |
-          # 이미 열린 PR 있는지 확인
           EXISTING=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
@@ -25,8 +25,7 @@ jobs:
             exit 0
           fi
 
-          # PR 생성
-          curl -s -X POST \
+          PR_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/pulls" \
@@ -35,6 +34,27 @@ jobs:
               \"head\": \"dev\",
               \"base\": \"main\",
               \"body\": \"## 🚀 자동 생성된 PR\n\n**커밋:** ${{ github.event.workflow_run.head_sha }}\n**작성자:** ${{ github.event.workflow_run.actor.login }}\n**브랜치:** dev → main\"
+            }")
+
+          PR_NUMBER=$(echo $PR_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['number'])")
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "PR 생성 완료: #$PR_NUMBER"
+
+      - name: Trigger Webhook Manually
+        if: steps.create_pr.outputs.pr_number != ''
+        run: |
+          curl -s -X POST http://${{ secrets.EC2_HOST }}/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: pull_request" \
+            -d "{
+              \"action\": \"opened\",
+              \"pull_request\": {
+                \"number\": ${{ steps.create_pr.outputs.pr_number }},
+                \"title\": \"${{ github.event.workflow_run.head_commit.message }}\"
+              },
+              \"repository\": {
+                \"full_name\": \"${{ github.repository }}\"
+              }
             }"
 
-          echo "PR 생성 완료"
+          echo "webhook 호출 완료"
