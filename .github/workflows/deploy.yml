@@ -112,6 +112,11 @@ jobs:
     outputs:
       pr_number: ${{ steps.create_pr.outputs.pr_number }}
     steps:
+      - name: Debug EC2 HOST
+        run: |
+          echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
+          curl -v http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000
+
       - name: Create PR (dev → main)
         id: create_pr
         run: |
@@ -145,7 +150,7 @@ jobs:
       - name: Trigger Webhook Manually
         if: steps.create_pr.outputs.pr_number != ''
         run: |
-          curl -s -X POST http://${{ secrets.EC2_HOST }}/webhook/github \
+          curl -s --max-time 10 -X POST http://${{ secrets.EC2_HOST }}/webhook/github \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: pull_request" \
             -d "{
@@ -157,7 +162,7 @@ jobs:
               \"repository\": {
                 \"full_name\": \"${{ github.repository }}\"
               }
-            }"
+            }" || echo "webhook 호출 실패 (무시)"
           echo "webhook 호출 완료"
 
   ui-test:
