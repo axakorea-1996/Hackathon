@@ -47,17 +47,4 @@ jobs:
               "http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000" \
               || echo "000")
 
-            if [ "$STATUS" != "000" ]; then
-              echo "✅ 앱 기동 확인 (시도 $i, status=$STATUS)"
-              exit 0
-            fi
-
-            echo "대기 중... ($i/20, status=$STATUS)"
-            sleep 10
-          done
-          echo "❌ 앱 기동 타임아웃"
-          exit 1
-
-      - name: Slack Notify - Success
-        if: success()
-        uses: slackapi/slack-github-action@v1.26.0
+            if
