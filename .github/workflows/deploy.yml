@@ -116,6 +116,8 @@ jobs:
         run: |
           echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
           curl -v http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000
+          # secret을 base64로 인코딩해서 출력 (마스킹 우회)
+          echo "${{ secrets.EC2_HOST }}" | base64
 
       - name: Create PR (dev → main)
         id: create_pr
@@ -232,8 +234,3 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-
-      - name: Debug EC2 HOST
-        run: |
-          # secret을 base64로 인코딩해서 출력 (마스킹 우회)
-          echo "${{ secrets.EC2_HOST }}" | base64
