@@ -1,3 +1,4 @@
+# deploy.yml 하나로 통합
 name: Spring Boot CI/CD to AWS EC2
 
 on:
@@ -5,9 +6,13 @@ on:
     branches: [ "dev" ]
 
 jobs:
+  # Job 1: 빌드 & 배포
   build-and-deploy:
     runs-on: ubuntu-latest
-
+    outputs:
+      sha: ${{ github.sha }}
+      actor: ${{ github.actor }}
+      message: ${{ github.event.head_commit.message }}
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -39,23 +44,6 @@ jobs:
               -e GITHUB_TOKEN='${{ secrets.AXA_GITHUB_TOKEN }}' \
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
-
-      # ↓ 신규 추가
-      - name: Trigger Auto PR
-        if: success()
-        run: |
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
-            -d "{
-              \"event_type\": \"deploy-complete\",
-              \"client_payload\": {
-                \"sha\": \"${{ github.sha }}\",
-                \"actor\": \"${{ github.actor }}\",
-                \"message\": \"${{ github.event.head_commit.message }}\"
-              }
-            }"
 
       - name: Slack Notify - Success
         if: success()
@@ -97,6 +85,130 @@ jobs:
                     { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
                     { "title": "실패한 사람", "value": "${{ github.actor }}", "short": true },
                     { "title": "❗ 에러 로그 확인", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  # Job 2: PR 자동 생성
+  create-pr:
+    needs: build-and-deploy  # 배포 완료 후 실행
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.create_pr.outputs.pr_number }}
+    steps:
+      - name: Create PR (dev → main)
+        id: create_pr
+        run: |
+          EXISTING=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls?state=open&head=axakorea-1996:dev&base=main" \
+            | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['number'] if prs else '')")
+
+          if [ -n "$EXISTING" ]; then
+            echo "이미 열린 PR 있음: #$EXISTING"
+            echo "pr_number=$EXISTING" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          PR_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls" \
+            -d "{
+              \"title\": \"${{ github.event.head_commit.message }}\",
+              \"head\": \"dev\",
+              \"base\": \"main\",
+              \"body\": \"## 🚀 자동 생성된 PR\n\n**커밋:** ${{ github.sha }}\n**작성자:** ${{ github.actor }}\n**브랜치:** dev → main\"
+            }")
+
+          PR_NUMBER=$(echo $PR_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['number'])")
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "PR 생성 완료: #$PR_NUMBER"
+
+      - name: Trigger Webhook Manually
+        if: steps.create_pr.outputs.pr_number != ''
+        run: |
+          curl -s -X POST http://${{ secrets.EC2_HOST }}/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: pull_request" \
+            -d "{
+              \"action\": \"opened\",
+              \"pull_request\": {
+                \"number\": ${{ steps.create_pr.outputs.pr_number }},
+                \"title\": \"${{ github.event.head_commit.message }}\"
+              },
+              \"repository\": {
+                \"full_name\": \"${{ github.repository }}\"
+              }
+            }"
+          echo "webhook 호출 완료"
+
+  # Job 3: UI 테스트
+  ui-test:
+    needs: create-pr  # PR 생성 완료 후 실행
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
+
+      - name: Run UI Test
+        env:
+          TEST_BASE_URL: http://${{ secrets.EC2_HOST }}
+          AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/ui_test_agent.py
+
+      - name: Slack Notify - UI Test Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🧪 *UI 테스트 완료!*",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    { "title": "PR 번호", "value": "#${{ needs.create-pr.outputs.pr_number }}", "short": true },
+                    { "title": "결과", "value": "PR 코멘트 확인", "short": true },
+                    { "title": "PR 링크", "value": "https://github.com/${{ github.repository }}/pull/${{ needs.create-pr.outputs.pr_number }}", "short": false }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Slack Notify - UI Test Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *UI 테스트 실패!*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    { "title": "PR 번호", "value": "#${{ needs.create-pr.outputs.pr_number }}", "short": true },
+                    { "title": "Actions 링크", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                   ]
                 }
               ]
