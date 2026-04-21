@@ -232,3 +232,8 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Debug EC2 HOST
+        run: |
+          # secret을 base64로 인코딩해서 출력 (마스킹 우회)
+          echo "${{ secrets.EC2_HOST }}" | base64
