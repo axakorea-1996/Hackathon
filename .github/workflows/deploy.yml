@@ -53,7 +53,7 @@ jobs:
             fi
 
             echo "대기 중... ($i/20, status=$STATUS)"
-            sleep 5
+            sleep 10
           done
           echo "❌ 앱 기동 타임아웃"
           exit 1
@@ -61,66 +61,3 @@ jobs:
       - name: Slack Notify - Success
         if: success()
         uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "✅ *배포 성공!*",
-              "attachments": [
-                {
-                  "color": "good",
-                  "fields": [
-                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
-                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
-                    { "title": "커밋한 사람", "value": "${{ github.actor }}", "short": true },
-                    { "title": "Actions 링크", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
-                  ]
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-
-      - name: Slack Notify - Failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "❌ *배포 실패!*",
-              "attachments": [
-                {
-                  "color": "danger",
-                  "fields": [
-                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
-                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
-                    { "title": "실패한 사람", "value": "${{ github.actor }}", "short": true },
-                    { "title": "❗ 에러 로그 확인", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
-                  ]
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-
-  create-pr:
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    outputs:
-      pr_number: ${{ steps.create_pr.outputs.pr_number }}
-    steps:
-      - name: Debug EC2 HOST
-        run: |
-          echo "${{ secrets.EC2_HOST }}" | base64
-          curl -v http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000 || true
-
-      - name: Create PR (dev → main)
-        id: create_pr
-        run: |
-          EXISTING=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "
