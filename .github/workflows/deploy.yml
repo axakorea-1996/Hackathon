@@ -39,7 +39,7 @@ jobs:
               -e GITHUB_TOKEN='${{ secrets.AXA_GITHUB_TOKEN }}' \
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
-     
+
       - name: Slack Notify - Success
         if: success()
         uses: slackapi/slack-github-action@v1.26.0
@@ -51,11 +51,11 @@ jobs:
                 {
                   "color": "good",
                   "fields": [
-                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
-                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
-                    { "title": "커밋한 사람", "value": "${{ github.actor }}", "short": true },
-                    { "title": "Actions 링크", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                    { "title": "레포지토리", "value": ${{ toJSON(github.repository) }}, "short": true },
+                    { "title": "브랜치", "value": ${{ toJSON(github.ref_name) }}, "short": true },
+                    { "title": "커밋 메시지", "value": ${{ toJSON(github.event.head_commit.message) }}, "short": false },
+                    { "title": "커밋한 사람", "value": ${{ toJSON(github.actor) }}, "short": true },
+                    { "title": "Actions 링크", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": false }
                   ]
                 }
               ]
@@ -75,11 +75,11 @@ jobs:
                 {
                   "color": "danger",
                   "fields": [
-                    { "title": "레포지토리", "value": "${{ github.repository }}", "short": true },
-                    { "title": "브랜치", "value": "${{ github.ref_name }}", "short": true },
-                    { "title": "커밋 메시지", "value": "${{ github.event.head_commit.message }}", "short": false },
-                    { "title": "실패한 사람", "value": "${{ github.actor }}", "short": true },
-                    { "title": "❗ 에러 로그 확인", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                    { "title": "레포지토리", "value": ${{ toJSON(github.repository) }}, "short": true },
+                    { "title": "브랜치", "value": ${{ toJSON(github.ref_name) }}, "short": true },
+                    { "title": "커밋 메시지", "value": ${{ toJSON(github.event.head_commit.message) }}, "short": false },
+                    { "title": "실패한 사람", "value": ${{ toJSON(github.actor) }}, "short": true },
+                    { "title": "❗ 에러 로그 확인", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": false }
                   ]
                 }
               ]
