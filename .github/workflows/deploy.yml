@@ -39,7 +39,24 @@ jobs:
               -e GITHUB_TOKEN='${{ secrets.AXA_GITHUB_TOKEN }}' \
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
-     
+
+      # ↓ 신규 추가
+      - name: Trigger Auto PR
+        if: success()
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
+            -d "{
+              \"event_type\": \"deploy-complete\",
+              \"client_payload\": {
+                \"sha\": \"${{ github.sha }}\",
+                \"actor\": \"${{ github.actor }}\",
+                \"message\": \"${{ github.event.head_commit.message }}\"
+              }
+            }"
+
       - name: Slack Notify - Success
         if: success()
         uses: slackapi/slack-github-action@v1.26.0

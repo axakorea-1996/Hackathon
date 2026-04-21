@@ -1,13 +1,11 @@
 name: Auto PR
 
 on:
-  workflow_run:
-    workflows: ["Spring Boot CI/CD to AWS EC2"]
-    types: [completed]
+  repository_dispatch:
+    types: [deploy-complete]
 
 jobs:
   create-pr:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +20,7 @@ jobs:
 
           if [ -n "$EXISTING" ]; then
             echo "이미 열린 PR 있음: #$EXISTING, 스킵"
+            echo "pr_number=$EXISTING" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -30,10 +29,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/pulls" \
             -d "{
-              \"title\": \"${{ github.event.workflow_run.head_commit.message }}\",
+              \"title\": \"${{ github.event.client_payload.message }}\",
               \"head\": \"dev\",
               \"base\": \"main\",
-              \"body\": \"## 🚀 자동 생성된 PR\n\n**커밋:** ${{ github.event.workflow_run.head_sha }}\n**작성자:** ${{ github.event.workflow_run.actor.login }}\n**브랜치:** dev → main\"
+              \"body\": \"## 🚀 자동 생성된 PR\n\n**커밋:** ${{ github.event.client_payload.sha }}\n**작성자:** ${{ github.event.client_payload.actor }}\n**브랜치:** dev → main\"
             }")
 
           PR_NUMBER=$(echo $PR_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['number'])")
@@ -50,11 +49,25 @@ jobs:
               \"action\": \"opened\",
               \"pull_request\": {
                 \"number\": ${{ steps.create_pr.outputs.pr_number }},
-                \"title\": \"${{ github.event.workflow_run.head_commit.message }}\"
+                \"title\": \"${{ github.event.client_payload.message }}\"
               },
               \"repository\": {
                 \"full_name\": \"${{ github.repository }}\"
               }
             }"
-
           echo "webhook 호출 완료"
+
+      - name: Trigger UI Test
+        if: steps.create_pr.outputs.pr_number != ''
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.AXA_GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
+            -d "{
+              \"event_type\": \"auto-pr-complete\",
+              \"client_payload\": {
+                \"pr_number\": \"${{ steps.create_pr.outputs.pr_number }}\"
+              }
+            }"
+          echo "UI 테스트 트리거 완료"
