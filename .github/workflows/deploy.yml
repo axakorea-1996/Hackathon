@@ -1,4 +1,3 @@
-# deploy.yml 하나로 통합
 name: Spring Boot CI/CD to AWS EC2
 
 on:
@@ -6,13 +5,8 @@ on:
     branches: [ "dev" ]
 
 jobs:
-  # Job 1: 빌드 & 배포
   build-and-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ github.sha }}
-      actor: ${{ github.actor }}
-      message: ${{ github.event.head_commit.message }}
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -44,6 +38,24 @@ jobs:
               -e GITHUB_TOKEN='${{ secrets.AXA_GITHUB_TOKEN }}' \
               --name spring-app \
               ${{ secrets.DOCKER_USERNAME }}/axakorea_hackathon:latest
+
+      # 배포 후 앱 기동 확인 (여기서 대기하면 이후 job은 대기 불필요)
+      - name: Wait for App Startup
+        run: |
+          echo "앱 기동 대기 중..."
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "http://${{ secrets.EC2_HOST }}/api/subscriptions/my?phone=010-0000-0000" \
+              || echo "000")
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "400" ]; then
+              echo "✅ 앱 기동 확인 (시도 $i, status=$STATUS)"
+              exit 0
+            fi
+            echo "대기 중... ($i/20, status=$STATUS)"
+            sleep 10
+          done
+          echo "❌ 앱 기동 타임아웃"
+          exit 1
 
       - name: Slack Notify - Success
         if: success()
@@ -93,9 +105,8 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
-  # Job 2: PR 자동 생성
   create-pr:
-    needs: build-and-deploy  # 배포 완료 후 실행
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     outputs:
       pr_number: ${{ steps.create_pr.outputs.pr_number }}
@@ -148,9 +159,8 @@ jobs:
             }"
           echo "webhook 호출 완료"
 
-  # Job 3: UI 테스트
   ui-test:
-    needs: create-pr  # PR 생성 완료 후 실행
+    needs: create-pr
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
