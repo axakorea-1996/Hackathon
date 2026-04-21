@@ -26,41 +26,42 @@ public class ImpactAnalysisAgent {
         log.info("영향도 분석 시작: PR #{} - {}", prNumber, prTitle);
 
         try {
-            // Step 1. 변경된 파일 수집
             List<ChangedFile> changedFiles = gitHubClient.getPrFiles(repo, prNumber);
             if (changedFiles.isEmpty()) {
                 log.info("PR #{} 변경 파일 없음, 분석 종료", prNumber);
                 return;
             }
 
-            // Step 2. 기존 연관 코드 수집
             String existingContext = contextCollector.collectRelatedContext(repo, changedFiles);
+            String dependencyTree  = dependencyAnalyzer.analyze(changedFiles);
+            String diffSummary     = buildDiffSummary(changedFiles);
 
-            // Step 3. 의존성 트리 분석
-            String dependencyTree = dependencyAnalyzer.analyze(changedFiles);
-
-            // Step 4. diff 정리
-            String diffSummary = buildDiffSummary(changedFiles);
-
-            // Step 5. AI 분석 요청
+            // AI 영향도 분석
             String analysisResult = openRouterClient.analyze(
-                buildSystemPrompt(),
-                buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
+                    buildSystemPrompt(),
+                    buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
             );
 
-            // Step 6. PR 댓글 등록
-            String comment = formatComment(analysisResult, changedFiles);
+            // AI Mermaid 다이어그램 생성
+            String mermaidDiagram = openRouterClient.analyze(
+                    buildDiagramSystemPrompt(),
+                    buildDiagramUserPrompt(prTitle, changedFiles, existingContext)
+            );
+
+            // PR 댓글 등록 (분석 + 다이어그램)
+            String comment = formatComment(analysisResult, mermaidDiagram, changedFiles);
             gitHubClient.postComment(repo, prNumber, comment);
 
-            log.info("영향도 분석 완료: PR #{}", prNumber);
+            log.info("영향도 분석 + 다이어그램 완료: PR #{}", prNumber);
 
         } catch (Exception e) {
             log.error("영향도 분석 실패: PR #{}", prNumber, e);
             gitHubClient.postComment(repo, prNumber,
-                "🤖 AI 영향도 분석 중 오류가 발생했습니다: " + e.getMessage());
+                    "🤖 AI 영향도 분석 중 오류가 발생했습니다: " + e.getMessage());
         }
     }
 
+    // ── 영향도 분석 프롬프트 ─────────────────────────
     private String buildSystemPrompt() {
         return """
                 당신은 Spring Boot MVC 프로젝트 전문 시니어 아키텍처 리뷰어입니다.
@@ -106,6 +107,86 @@ public class ImpactAnalysisAgent {
                 """.formatted(prTitle, depTree, diff, existingCode);
     }
 
+    // ── 다이어그램 생성 프롬프트 ─────────────────────
+    private String buildDiagramSystemPrompt() {
+        return """
+                당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
+                
+                역할:
+                - 변경된 코드와 기존 코드의 관계를 Mermaid 다이어그램으로 표현합니다
+                - GitHub PR 댓글에 렌더링될 수 있는 유효한 Mermaid 문법을 사용합니다
+                
+                규칙:
+                1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
+                2. flowchart TD 방향을 사용하세요
+                3. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
+                4. 영향받는 기존 파일은 노란색(style fill:#FFE66D,color:#000)으로 표시하세요
+                5. 영향없는 파일은 기본색으로 표시하세요
+                6. 클래스 간 의존 관계를 화살표로 표현하세요
+                7. 다이어그램만 반환하고 설명 텍스트는 포함하지 마세요
+                """;
+    }
+
+    private String buildDiagramUserPrompt(String prTitle,
+                                          List<ChangedFile> changedFiles,
+                                          String existingContext) {
+        String changedFileNames = changedFiles.stream()
+                .map(f -> extractClassName(f.getFilename()))
+                .collect(Collectors.joining(", "));
+
+        return """
+                ## PR 제목: %s
+                
+                ## 변경된 클래스 목록
+                %s
+                
+                ## 기존 연관 코드
+                %s
+                
+                위 정보를 기반으로 아래 조건에 맞는 Mermaid 다이어그램을 생성해주세요:
+                
+                1. MVC 계층 구조를 표현하세요 (Controller → Service → Repository → Domain)
+                2. 변경된 클래스는 빨간색으로 강조하세요
+                3. 영향받는 기존 클래스는 노란색으로 표시하세요
+                4. 클래스 간 호출 관계를 화살표로 연결하세요
+                5. DB 테이블과의 연관관계도 포함하세요 (DB 노드는 원통형으로)
+                
+                반드시 ```mermaid 블록으로 감싸서 반환하세요.
+                """.formatted(prTitle, changedFileNames, existingContext);
+    }
+
+    // ── PR 댓글 포맷 ─────────────────────────────────
+    private String formatComment(String aiResult,
+                                 String mermaidDiagram,
+                                 List<ChangedFile> changedFiles) {
+        String fileList = changedFiles.stream()
+                .map(f -> "- `" + f.getFilename() + "`")
+                .collect(Collectors.joining("\n"));
+
+        return """
+                ## 🤖 AI 영향도 분석 결과
+                
+                > **분석 대상 파일:**
+                %s
+                
+                ---
+                
+                ## 📊 코드 의존성 다이어그램
+                
+                %s
+                
+                ---
+                
+                ## 🔍 영향도 분석
+                
+                %s
+                
+                ---
+                *Powered by OpenRouter AI Agent*
+                """.formatted(fileList, mermaidDiagram, aiResult);
+    }
+
+    // ── 유틸 ─────────────────────────────────────────
     private String buildDiffSummary(List<ChangedFile> files) {
         return files.stream()
                 .map(f -> """
@@ -123,23 +204,12 @@ public class ImpactAnalysisAgent {
                 .collect(Collectors.joining("\n"));
     }
 
-    private String formatComment(String aiResult, List<ChangedFile> changedFiles) {
-        String fileList = changedFiles.stream()
-                .map(f -> "- `" + f.getFilename() + "`")
-                .collect(Collectors.joining("\n"));
-
-        return """
-                ## 🤖 AI 영향도 분석 결과
-                
-                > **분석 대상 파일:**
-                %s
-                
-                ---
-                
-                %s
-                
-                ---
-                *Powered by OpenRouter AI Agent*
-                """.formatted(fileList, aiResult);
+    // 파일 경로 → 클래스명 추출
+    // 예) subscription/src/.../SubscriptionService.java → SubscriptionService
+    private String extractClassName(String filePath) {
+        String fileName = filePath.contains("/")
+                ? filePath.substring(filePath.lastIndexOf('/') + 1)
+                : filePath;
+        return fileName.replace(".java", "");
     }
 }
