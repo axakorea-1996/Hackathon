@@ -32,31 +32,49 @@ async def test_step1_terms(page):
 async def test_full_flow(page):
     await page.goto(BASE_URL)
     await page.click('button.nav-btn-primary')
+
     # Step1 약관동의
+    await page.wait_for_selector('.terms-all')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
+
     # Step2 차량선택
+    await page.wait_for_selector('.v-card:first-child')
     await page.click('.v-card:first-child')
     await page.click('.bot-bar .btn-p')
+
     # Step3 차량확인
+    await page.wait_for_selector('select.inp')
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
+
     # Step4 운전자선택
+    await page.wait_for_selector('.chip:has-text("부부")')
     await page.click('.chip:has-text("부부")')
     await page.click('.bot-bar .btn-p')
+
     # Step5 보험료 확인
+    await page.wait_for_selector('.pr-val.big')
     await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640')
     await page.click('.bot-bar .btn-p')
+
     # Step6 특약
+    await page.wait_for_selector('.tgl')
     await page.click('.bot-bar .btn-p')
+
     # Step7 약관동의
+    await page.wait_for_selector('.terms-all')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
+
     # Step8 결제정보
+    await page.wait_for_selector('input[placeholder="MM / YY"]')
     await page.fill('input[placeholder="MM / YY"]', '12/26')
     await page.fill('input[placeholder="***"]', '123')
     await page.click('.bot-bar .btn-p')
+
     # Step9 완료 확인
+    await page.wait_for_selector('.success-em')
     await expect(page.locator('.success-em')).to_be_visible()
     await expect(page.locator('.success-title')).to_contain_text('감사드려요')
     return "✅ 청약 전체 플로우 (Step 1~9) 완료"
