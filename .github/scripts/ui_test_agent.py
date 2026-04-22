@@ -22,6 +22,14 @@ style.textContent = `
 document.head.appendChild(style);
 """
 
+# 알려진 실제 텍스트 매핑
+KNOWN_TEXTS = {
+    ".empty-title":  "가입된 보험이 없어요",
+    ".success-title": "감사드려요",
+    ".pr-val.big":   "1,019,640",
+    ".logo-box":     "AXA"
+}
+
 # ── HTML 다운로드 ─────────────────────────────────
 def fetch_html(url: str) -> str:
     try:
@@ -34,17 +42,28 @@ def fetch_html(url: str) -> str:
         print(f"HTML 다운로드 실패: {e}")
         return ""
 
-# ── AI 테스트 케이스 검증 ─────────────────────────
+# ── AI 테스트 케이스 검증 및 보정 ─────────────────
 def validate_test_cases(test_cases: list) -> list:
-    """AI가 생성한 테스트 케이스 유효성 검사 및 보정"""
     invalid_values = ["visible", "hidden", "true", "false", "enabled", "disabled"]
+
     for tc in test_cases:
         for step in tc.get("steps", []):
             if step.get("action") == "assert":
-                value = step.get("value", "")
+                value    = step.get("value", "")
+                selector = step.get("selector", "")
+
+                # 1. 잘못된 value 보정
                 if value and str(value).lower() in invalid_values:
                     print(f"⚠️ 유효하지 않은 assert value 감지: '{value}' → null로 변경")
                     step["value"] = None
+
+                # 2. 알려진 실제 텍스트로 보정
+                if selector in KNOWN_TEXTS:
+                    correct = KNOWN_TEXTS[selector]
+                    if correct and value != correct:
+                        print(f"⚠️ 텍스트 보정: '{selector}' → '{value}' → '{correct}'")
+                        step["value"] = correct
+
     return test_cases
 
 # ── AI로 테스트 케이스 생성 (Gemma 4 31B) ────────
@@ -63,7 +82,7 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 {html_truncated}
 
 ## 반드시 지켜야 할 규칙
-1. assert의 value는 반드시 실제 텍스트를 넣으세요. 'visible' 같은 단어는 절대 사용 금지
+1. assert의 value는 반드시 실제 HTML에 있는 텍스트를 넣으세요. 'visible' 같은 단어는 절대 사용 금지
 2. assert에서 텍스트 확인이 불필요하면 value를 null로 설정하세요
 3. .chip은 반드시 Step4에서만 접근하세요 (Step1~3을 거친 후)
 4. Step 순서: 약관동의(1) → 차량선택(2) → 차량확인(3) → 운전자(4) → 설계(5) → 특약(6) → 확인(7) → 결제(8) → 완료(9)
@@ -71,6 +90,8 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 6. .chip 선택은 nth 액션으로 인덱스 1 사용 (부부 선택)
 7. .v-card 선택은 first 액션 사용
 8. 반드시 JSON만 출력 (마크다운 코드블록 없음)
+9. .empty-title 텍스트는 반드시 '가입된 보험이 없어요' 사용
+10. .success-title 텍스트는 반드시 '감사드려요' 포함
 
 ## action 종류
 - goto: 페이지 이동 (selector null, value null)
@@ -87,7 +108,7 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 1. 메인 페이지 로드 (.logo-box에서 AXA 텍스트 확인)
 2. 청약 페이지 진입 (청약하기 버튼 클릭 후 STEP 1 확인)
 3. 청약 전체 플로우 Step1~9 (순서대로 모든 Step 통과)
-4. 마이페이지 빈 상태 (localStorage 초기화 후 empty-title 확인)
+4. 마이페이지 빈 상태 (localStorage 초기화 후 .empty-title에서 '가입된 보험이 없어요' 확인)
 
 ## 청약 전체 플로우 상세 순서 (반드시 이 순서대로)
 Step1: .terms-all 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 2 확인
