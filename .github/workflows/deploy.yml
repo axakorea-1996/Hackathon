@@ -185,6 +185,7 @@ jobs:
           AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python3 .github/scripts/ui_test_agent.py
 
       - name: Upload Screenshots
