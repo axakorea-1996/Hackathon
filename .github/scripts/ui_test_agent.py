@@ -2,7 +2,7 @@ import asyncio, json, os, sys
 import requests
 from playwright.async_api import async_playwright, expect
 
-BASE_URL  = os.environ.get("TEST_BASE_URL", "http://localhost")
+BASE_URL  = os.environ.get("TEST_BASE_URL", "https://axakorea-1996.github.io/Hackathon-FE/a.html")
 TOKEN     = os.environ.get("AXA_GITHUB_TOKEN", "")
 PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
