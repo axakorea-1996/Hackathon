@@ -110,21 +110,36 @@ public class ImpactAnalysisAgent {
     // ── 다이어그램 생성 프롬프트 ─────────────────────
     private String buildDiagramSystemPrompt() {
         return """
-                당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
-                
-                역할:
-                - 변경된 코드와 기존 코드의 관계를 Mermaid 다이어그램으로 표현합니다
-                - GitHub PR 댓글에 렌더링될 수 있는 유효한 Mermaid 문법을 사용합니다
-                
-                규칙:
-                1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
-                2. flowchart TD 방향을 사용하세요
-                3. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
-                4. 영향받는 기존 파일은 노란색(style fill:#FFE66D,color:#000)으로 표시하세요
-                5. 영향없는 파일은 기본색으로 표시하세요
-                6. 클래스 간 의존 관계를 화살표로 표현하세요
-                7. 다이어그램만 반환하고 설명 텍스트는 포함하지 마세요
-                """;
+            당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
+            
+            역할:
+            - 변경된 코드와 기존 코드의 관계를 Mermaid 다이어그램으로 표현합니다
+            - GitHub PR 댓글에 렌더링될 수 있는 유효한 Mermaid 문법을 사용합니다
+            
+            규칙:
+            1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
+            2. flowchart TD 방향을 사용하세요
+            3. 노드 라벨에 절대 \\n 사용 금지 — 한 줄로만 작성하세요
+               올바른 예: A["SubscriptionController"]
+               잘못된 예: A["SubscriptionController\\n(Controller)"]
+            4. 노드 ID는 영문자와 숫자만 사용하세요 (특수문자 금지)
+            5. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
+            6. 영향받는 기존 파일은 노란색(style fill:#FFE66D,color:#000)으로 표시하세요
+            7. 화살표 라벨은 짧게 (호출, 조회, 매핑, 사용 등 2-4자)
+            8. 다이어그램 코드만 반환하고 설명 텍스트는 포함하지 마세요
+            
+            올바른 예시:
+            ```mermaid
+            flowchart TD
+                A["SubscriptionController"] -->|호출| B["SubscriptionService"]
+                B -->|조회| C["SubscriptionRepository"]
+                C -->|매핑| D["Subscription"]
+                style A fill:#FF6B6B,color:#000
+                style B fill:#FFE66D,color:#000
+                style C fill:#FFE66D,color:#000
+                style D fill:#FFE66D,color:#000
+            ```
+            """;
     }
 
     private String buildDiagramUserPrompt(String prTitle,
