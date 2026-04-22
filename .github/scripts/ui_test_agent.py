@@ -1,4 +1,4 @@
-import asyncio, os, sys
+import asyncio, os, sys, traceback
 import requests
 from playwright.async_api import async_playwright, expect
 
@@ -61,10 +61,11 @@ async def test_full_flow(page):
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
-    # Step4 운전자선택 - 부부는 index 1 (본인, 부부, 지정1인, 누구나...)
+    # Step4 운전자선택 - 부부는 index 1
     await expect(page.locator('#progLabel')).to_contain_text('STEP 4', timeout=10000)
     await page.wait_for_selector('.chip', state='visible')
-    await page.locator('.chip').nth(1).click()
+    chips = page.locator('.chip')
+    await chips.nth(1).click()
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
@@ -126,6 +127,7 @@ async def run():
                 results["passed"].append({"name": name, "message": msg})
                 print(f"PASS: {name}")
             except Exception as e:
+                traceback.print_exc()  # 정확한 에러 라인 출력
                 results["failed"].append({"name": name, "error": str(e)})
                 print(f"FAIL: {name} → {e}")
             finally:
