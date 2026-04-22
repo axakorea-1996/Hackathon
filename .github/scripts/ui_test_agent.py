@@ -9,7 +9,6 @@ PR_NUMBER      = os.environ.get("PR_NUMBER", "")
 REPO           = os.environ.get("REPO", "")
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
-# ── 애니메이션 비활성화 (즉시 실행 방식) ──────────
 DISABLE_ANIMATION_SCRIPT = """
 const style = document.createElement('style');
 style.textContent = `
@@ -23,6 +22,14 @@ style.textContent = `
 document.head.appendChild(style);
 """
 
+# 알려진 실제 텍스트 매핑
+KNOWN_TEXTS = {
+    ".empty-title":  "가입된 보험이 없어요",
+    ".success-title": "감사드려요",
+    ".pr-val.big":   "1,019,640",
+    ".logo-box":     "AXA"
+}
+
 # ── HTML 다운로드 ─────────────────────────────────
 def fetch_html(url: str) -> str:
     try:
@@ -35,11 +42,32 @@ def fetch_html(url: str) -> str:
         print(f"HTML 다운로드 실패: {e}")
         return ""
 
+# ── AI 테스트 케이스 검증 및 보정 ─────────────────
+def validate_test_cases(test_cases: list) -> list:
+    invalid_values = ["visible", "hidden", "true", "false", "enabled", "disabled"]
+
+    for tc in test_cases:
+        for step in tc.get("steps", []):
+            if step.get("action") == "assert":
+                value    = step.get("value", "")
+                selector = step.get("selector", "")
+
+                # 1. 잘못된 value 보정
+                if value and str(value).lower() in invalid_values:
+                    print(f"⚠️ 유효하지 않은 assert value 감지: '{value}' → null로 변경")
+                    step["value"] = None
+
+                # 2. 알려진 실제 텍스트로 보정
+                if selector in KNOWN_TEXTS:
+                    correct = KNOWN_TEXTS[selector]
+                    if correct and value != correct:
+                        print(f"⚠️ 텍스트 보정: '{selector}' → '{value}' → '{correct}'")
+                        step["value"] = correct
+
+    return test_cases
+
 # ── AI로 테스트 케이스 생성 (Gemma 4 31B) ────────
 def generate_test_cases_with_ai(html: str) -> list:
-    """HTML을 분석해서 청약 프로세스 테스트 케이스 자동 생성"""
-
-    # style, script 태그 제거 후 핵심 구조만 추출
     html_clean = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', html)
     html_clean = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', html_clean)
     html_clean = re.sub(r'\s+', ' ', html_clean).strip()
@@ -53,27 +81,45 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 ## HTML (핵심 구조)
 {html_truncated}
 
-## 분석 기준
-1. 메인 페이지에서 청약 버튼 클릭으로 시작하는 전체 플로우
-2. 각 Step별 핵심 UI 요소 (버튼, 체크박스, 선택 등)
-3. 최종 완료 화면 검증
-4. 페이지 이동 시 #progLabel로 Step 확인
-5. .chip 선택 시 nth 인덱스 방식 사용 (filter 사용 금지)
-6. .v-card 선택 시 first 프로퍼티 사용 (first() 메서드 사용 금지)
+## 반드시 지켜야 할 규칙
+1. assert의 value는 반드시 실제 HTML에 있는 텍스트를 넣으세요. 'visible' 같은 단어는 절대 사용 금지
+2. assert에서 텍스트 확인이 불필요하면 value를 null로 설정하세요
+3. .chip은 반드시 Step4에서만 접근하세요 (Step1~3을 거친 후)
+4. Step 순서: 약관동의(1) → 차량선택(2) → 차량확인(3) → 운전자(4) → 설계(5) → 특약(6) → 확인(7) → 결제(8) → 완료(9)
+5. 각 Step 이동 후 반드시 #progLabel로 Step 진입 확인
+6. .chip 선택은 nth 액션으로 인덱스 1 사용 (부부 선택)
+7. .v-card 선택은 first 액션 사용
+8. 반드시 JSON만 출력 (마크다운 코드블록 없음)
+9. .empty-title 텍스트는 반드시 '가입된 보험이 없어요' 사용
+10. .success-title 텍스트는 반드시 '감사드려요' 포함
 
 ## action 종류
-- goto: 페이지 이동
+- goto: 페이지 이동 (selector null, value null)
 - click: 요소 클릭
 - fill: 텍스트 입력
 - select: select box 선택
-- nth: 인덱스로 요소 선택 후 클릭 (value에 인덱스 숫자)
-- first: 첫 번째 요소 클릭
-- assert: 요소 텍스트 또는 가시성 확인
-- clear_storage: localStorage 항목 삭제
+- nth: 인덱스로 요소 선택 후 클릭 (value에 인덱스 숫자 문자열)
+- first: 첫 번째 요소 클릭 (selector만 지정, value null)
+- assert: 요소 확인 (value는 실제 텍스트 또는 null)
+- clear_storage: localStorage 항목 삭제 (value에 키 이름)
 
-## 출력 규칙
-- 반드시 JSON만 출력 (다른 텍스트 없음, 마크다운 코드블록 없음)
-- selector는 실제 HTML의 class/id 기반으로 작성
+## 테스트 케이스 구성
+반드시 아래 4개를 생성하세요:
+1. 메인 페이지 로드 (.logo-box에서 AXA 텍스트 확인)
+2. 청약 페이지 진입 (청약하기 버튼 클릭 후 STEP 1 확인)
+3. 청약 전체 플로우 Step1~9 (순서대로 모든 Step 통과)
+4. 마이페이지 빈 상태 (localStorage 초기화 후 .empty-title에서 '가입된 보험이 없어요' 확인)
+
+## 청약 전체 플로우 상세 순서 (반드시 이 순서대로)
+Step1: .terms-all 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 2 확인
+Step2: .v-card first 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 3 확인
+Step3: select.inp 출퇴근용 선택 → .bot-bar .btn-p 클릭 → #progLabel STEP 4 확인
+Step4: .chip nth(1) 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 5 확인
+Step5: .pr-val.big에서 1,019,640 확인 → .bot-bar .btn-p 클릭 → #progLabel STEP 6 확인
+Step6: .bot-bar .btn-p 클릭 → #progLabel STEP 7 확인
+Step7: .terms-all 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 8 확인
+Step8: input[placeholder="MM / YY"] 12/26 입력 → input[placeholder="***"] 123 입력 → .bot-bar .btn-p 클릭 → #progLabel STEP 9 확인
+Step9: .success-em 가시성 확인(value null) → .success-title에서 감사드려요 확인
 
 ## 출력 형식
 {{
@@ -87,18 +133,6 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
           "selector": null,
           "value": null,
           "description": "페이지 이동"
-        }},
-        {{
-          "action": "click",
-          "selector": "button.nav-btn-primary",
-          "value": null,
-          "description": "청약하기 버튼 클릭"
-        }},
-        {{
-          "action": "assert",
-          "selector": "#progLabel",
-          "value": "STEP 1",
-          "description": "Step1 진입 확인"
         }}
       ]
     }}
@@ -107,7 +141,7 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 """
 
     body = {
-        "model": "google/gemma-4-31b-it",  # ← Gemma 4 31B
+        "model": "google/gemma-4-31b-it",
         "max_tokens": 3000,
         "messages": [{"role": "user", "content": prompt}]
     }
@@ -130,6 +164,7 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
             content = result["choices"][0]["message"]["content"]
             clean = content.replace("```json", "").replace("```", "").strip()
             test_cases = json.loads(clean)["test_cases"]
+            test_cases = validate_test_cases(test_cases)
             print(f"AI 테스트 케이스 생성 완료: {len(test_cases)}개")
             return test_cases
     except Exception as e:
@@ -184,7 +219,7 @@ def get_default_test_cases() -> list:
                 {"action": "select",  "selector": "select.inp",                   "value": "출퇴근용",  "description": "운행형태 선택"},
                 {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
                 {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 4",    "description": "Step4 확인"},
-                {"action": "nth",     "selector": ".chip",                        "value": "1",         "description": "부부 선택 (index 1)"},
+                {"action": "nth",     "selector": ".chip",                        "value": "1",         "description": "부부 선택"},
                 {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
                 {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 5",    "description": "Step5 확인"},
                 {"action": "assert",  "selector": ".pr-val.big",                  "value": "1,019,640", "description": "보험료 확인"},
@@ -207,10 +242,10 @@ def get_default_test_cases() -> list:
             "name": "마이페이지 빈 상태",
             "description": "가입 전 마이페이지 빈 상태 확인",
             "steps": [
-                {"action": "goto",          "selector": None,                    "value": None,               "description": "페이지 이동"},
-                {"action": "clear_storage", "selector": None,                    "value": "axa_policies",      "description": "로컬스토리지 초기화"},
-                {"action": "click",         "selector": "button.nav-btn-ghost",  "value": None,               "description": "마이페이지 클릭"},
-                {"action": "assert",        "selector": ".empty-title",          "value": "가입된 보험이 없어요", "description": "빈 상태 확인"}
+                {"action": "goto",          "selector": None,                   "value": None,               "description": "페이지 이동"},
+                {"action": "clear_storage", "selector": None,                   "value": "axa_policies",      "description": "로컬스토리지 초기화"},
+                {"action": "click",         "selector": "button.nav-btn-ghost", "value": None,               "description": "마이페이지 클릭"},
+                {"action": "assert",        "selector": ".empty-title",         "value": "가입된 보험이 없어요", "description": "빈 상태 확인"}
             ]
         }
     ]
@@ -225,7 +260,7 @@ def analyze_failures_with_ai(failed_tests: list) -> str:
     )
 
     body = {
-        "model": "google/gemma-4-31b-it",  # ← Gemma 4 31B
+        "model": "google/gemma-4-31b-it",
         "max_tokens": 800,
         "messages": [{
             "role": "user",
@@ -290,13 +325,11 @@ async def execute_steps(page, steps: list):
             await page.select_option(selector, value)
 
         elif action == "nth":
-            # .chip nth(1) 방식 - filter() 사용 안 함
             idx = int(value)
             await page.wait_for_selector(selector, state='visible', timeout=10000)
             await page.locator(selector).nth(idx).click()
 
         elif action == "first":
-            # .v-card first 프로퍼티 방식 - first() 메서드 사용 안 함
             await page.wait_for_selector(selector, state='visible', timeout=10000)
             await page.locator(selector).first.click()
 
