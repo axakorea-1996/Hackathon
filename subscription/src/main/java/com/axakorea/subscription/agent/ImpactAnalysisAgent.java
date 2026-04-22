@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -26,29 +27,42 @@ public class ImpactAnalysisAgent {
         log.info("영향도 분석 시작: PR #{} - {}", prNumber, prTitle);
 
         try {
+            // Step 1. 변경된 파일 수집
             List<ChangedFile> changedFiles = gitHubClient.getPrFiles(repo, prNumber);
             if (changedFiles.isEmpty()) {
                 log.info("PR #{} 변경 파일 없음, 분석 종료", prNumber);
                 return;
             }
 
+            // Step 2. 기존 연관 코드 수집
             String existingContext = contextCollector.collectRelatedContext(repo, changedFiles);
-            String dependencyTree  = dependencyAnalyzer.analyze(changedFiles);
-            String diffSummary     = buildDiffSummary(changedFiles);
 
-            // AI 영향도 분석
-            String analysisResult = openRouterClient.analyze(
-                    buildSystemPrompt(),
-                    buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
+            // Step 3. 의존성 트리 분석
+            String dependencyTree = dependencyAnalyzer.analyze(changedFiles);
+
+            // Step 4. diff 정리
+            String diffSummary = buildDiffSummary(changedFiles);
+
+            // Step 5. AI 분석 병렬 실행 (영향도 분석 + Mermaid 다이어그램 동시 실행)
+            CompletableFuture<String> analysisFuture = CompletableFuture.supplyAsync(() ->
+                    openRouterClient.analyze(
+                            buildSystemPrompt(),
+                            buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
+                    )
             );
 
-            // AI Mermaid 다이어그램 생성
-            String mermaidDiagram = openRouterClient.analyze(
-                    buildDiagramSystemPrompt(),
-                    buildDiagramUserPrompt(prTitle, changedFiles, existingContext)
+            CompletableFuture<String> diagramFuture = CompletableFuture.supplyAsync(() ->
+                    openRouterClient.analyze(
+                            buildDiagramSystemPrompt(),
+                            buildDiagramUserPrompt(prTitle, changedFiles, existingContext)
+                    )
             );
 
-            // PR 댓글 등록 (분석 + 다이어그램)
+            // Step 6. 둘 다 완료될 때까지 대기
+            String analysisResult = analysisFuture.get();
+            String mermaidDiagram = diagramFuture.get();
+
+            // Step 7. PR 댓글 등록
             String comment = formatComment(analysisResult, mermaidDiagram, changedFiles);
             gitHubClient.postComment(repo, prNumber, comment);
 
@@ -70,8 +84,6 @@ public class ImpactAnalysisAgent {
                 - 새로 추가/변경된 코드가 기존 코드에 미치는 영향을 분석합니다
                 - 장애 발생 가능성을 사전에 탐지합니다
                 - MVC 패턴(Controller → Service → Repository → Domain)의 계층 구조를 기반으로 분석합니다
-                - 변경된 코드와 기존 코드의 관계를 Mermaid 다이어그램으로 표현합니다
-                - GitHub PR 댓글에 렌더링될 수 있는 유효한 Mermaid 문법을 사용합니다
                 
                 분석 기준:
                 1. 트랜잭션 정합성 (데이터 불일치 가능성)
@@ -80,22 +92,6 @@ public class ImpactAnalysisAgent {
                 4. NullPointerException 위험
                 5. 순환 의존성 (Circular Dependency)
                 6. DB 스키마 변경으로 인한 기존 데이터 영향
-              
-                규칙:
-                1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
-                2. flowchart TD 방향을 사용하세요
-                3. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
-                4. 영향받는 기존 파일은 노란색(style fill:#FFE66D,color:#000)으로 표시하세요
-                5. 영향없는 파일은 기본색으로 표시하세요
-                6. 클래스 간 의존 관계를 화살표로 표현하세요
-                7. 다이어그램만 반환하고 설명 텍스트는 포함하지 마세요
-                8. 노드 이름에 특수문자(괄호, 슬래시, 점 등)를 사용하지 마세요
-                9. 노드 이름은 영문 알파벳과 숫자만 사용하세요
-                10. 노드 레이블에 한글을 사용할 경우 큰따옴표로 감싸세요
-                    예시: A["구독서비스"] --> B["컨트롤러"]
-                11. 화살표 레이블에 특수문자를 사용하지 마세요
-                    올바른 예시: A -->|calls| B
-                    잘못된 예시: A -->|calls()| B  
                 
                 응답은 반드시 한국어 Markdown 형식으로 작성하세요.
                 """;
@@ -142,6 +138,13 @@ public class ImpactAnalysisAgent {
                 5. 영향없는 파일은 기본색으로 표시하세요
                 6. 클래스 간 의존 관계를 화살표로 표현하세요
                 7. 다이어그램만 반환하고 설명 텍스트는 포함하지 마세요
+                8. 노드 이름에 특수문자(괄호, 슬래시, 점 등)를 사용하지 마세요
+                9. 노드 이름은 영문 알파벳과 숫자만 사용하세요
+                10. 노드 레이블에 한글을 사용할 경우 큰따옴표로 감싸세요
+                    예시: A["구독서비스"] --> B["컨트롤러"]
+                11. 화살표 레이블에 특수문자를 사용하지 마세요
+                    올바른 예시: A -->|calls| B
+                    잘못된 예시: A -->|calls()| B
                 """;
     }
 
@@ -210,9 +213,9 @@ public class ImpactAnalysisAgent {
                 .map(f -> """
                         ### %s
                         - 추가: +%d줄 / 삭제: -%d줄
-                        ```java
+```java
                         %s
-                        ```
+```
                         """.formatted(
                         f.getFilename(),
                         f.getAdditions(),
@@ -222,8 +225,6 @@ public class ImpactAnalysisAgent {
                 .collect(Collectors.joining("\n"));
     }
 
-    // 파일 경로 → 클래스명 추출
-    // 예) subscription/src/.../SubscriptionService.java → SubscriptionService
     private String extractClassName(String filePath) {
         String fileName = filePath.contains("/")
                 ? filePath.substring(filePath.lastIndexOf('/') + 1)
