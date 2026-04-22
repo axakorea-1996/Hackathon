@@ -125,14 +125,32 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: python3 .github/scripts/create_pr.py
 
-      - name: Trigger Webhook Manually
+      - name: Trigger Webhook via SSH
         if: steps.create_pr.outputs.pr_number != ''
-        env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
-        run: python3 .github/scripts/trigger_webhook.py
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            PR_NUMBER=${{ steps.create_pr.outputs.pr_number }}
+            REPO="${{ github.repository }}"
+            TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
+
+            curl -s -X POST http://localhost/webhook/github \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: pull_request" \
+              -d "{
+                \"action\": \"opened\",
+                \"pull_request\": {
+                  \"number\": $PR_NUMBER,
+                  \"title\": \"$TITLE\"
+                },
+                \"repository\": {
+                  \"full_name\": \"$REPO\"
+                }
+              }"
+            echo "webhook 호출 완료"
 
   ui-test:
     needs: create-pr
@@ -157,11 +175,7 @@ jobs:
           AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
-        run: |
-          echo "=== ui_test_agent.py 내용 확인 ==="
-          grep -n "부부" .github/scripts/ui_test_agent.py
-          echo "=== 실행 ==="
-          python3 .github/scripts/ui_test_agent.py
+        run: python3 .github/scripts/ui_test_agent.py
 
       - name: Upload Screenshots
         if: always()
