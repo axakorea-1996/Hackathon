@@ -1,4 +1,4 @@
-import asyncio, json, os, sys
+import asyncio, os, sys
 import requests
 from playwright.async_api import async_playwright, expect
 
@@ -6,6 +6,22 @@ BASE_URL  = os.environ.get("TEST_BASE_URL", "https://axakorea-1996.github.io/Hac
 TOKEN     = os.environ.get("AXA_GITHUB_TOKEN", "")
 PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
+
+# ── 애니메이션 비활성화 스크립트 ──────────────────
+DISABLE_ANIMATION_SCRIPT = """
+document.addEventListener('DOMContentLoaded', () => {
+    const style = document.createElement('style');
+    style.textContent = `
+        *, *::before, *::after {
+            animation-duration: 0s !important;
+            animation-delay: 0s !important;
+            transition-duration: 0s !important;
+            transition-delay: 0s !important;
+        }
+    `;
+    document.head.appendChild(style);
+});
+"""
 
 # ── 테스트 케이스 ─────────────────────────────────
 
@@ -34,47 +50,55 @@ async def test_full_flow(page):
     await page.click('button.nav-btn-primary')
 
     # Step1 약관동의
-    await page.wait_for_selector('.terms-all')
+    await page.wait_for_selector('.terms-all', state='visible')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
 
     # Step2 차량선택
-    await page.wait_for_selector('.v-card:first-child')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 2')
+    await page.wait_for_selector('.v-card:first-child', state='visible')
     await page.click('.v-card:first-child')
     await page.click('.bot-bar .btn-p')
 
     # Step3 차량확인
-    await page.wait_for_selector('select.inp')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 3')
+    await page.wait_for_selector('select.inp', state='visible')
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
     # Step4 운전자선택
-    await page.wait_for_selector('.chip:has-text("부부")')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 4')
+    await page.wait_for_selector('.chip:has-text("부부")', state='visible')
     await page.click('.chip:has-text("부부")')
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
-    await page.wait_for_selector('.pr-val.big')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 5')
+    await page.wait_for_selector('.pr-val.big', state='visible')
     await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640')
     await page.click('.bot-bar .btn-p')
 
     # Step6 특약
-    await page.wait_for_selector('.tgl')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 6')
+    await page.wait_for_selector('.tgl', state='visible')
     await page.click('.bot-bar .btn-p')
 
     # Step7 약관동의
-    await page.wait_for_selector('.terms-all')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 7')
+    await page.wait_for_selector('.terms-all', state='visible')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
 
     # Step8 결제정보
-    await page.wait_for_selector('input[placeholder="MM / YY"]')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 8')
+    await page.wait_for_selector('input[placeholder="MM / YY"]', state='visible')
     await page.fill('input[placeholder="MM / YY"]', '12/26')
     await page.fill('input[placeholder="***"]', '123')
     await page.click('.bot-bar .btn-p')
 
     # Step9 완료 확인
-    await page.wait_for_selector('.success-em')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 9')
+    await page.wait_for_selector('.success-em', state='visible')
     await expect(page.locator('.success-em')).to_be_visible()
     await expect(page.locator('.success-title')).to_contain_text('감사드려요')
     return "✅ 청약 전체 플로우 (Step 1~9) 완료"
@@ -103,6 +127,10 @@ async def run():
         for name, fn in TEST_CASES:
             ctx  = await browser.new_context()
             page = await ctx.new_page()
+
+            # 애니메이션 비활성화
+            await page.add_init_script(DISABLE_ANIMATION_SCRIPT)
+
             try:
                 msg = await fn(page)
                 results["passed"].append({"name": name, "message": msg})
