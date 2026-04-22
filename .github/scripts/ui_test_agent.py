@@ -7,7 +7,6 @@ TOKEN     = os.environ.get("AXA_GITHUB_TOKEN", "")
 PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
 
-# ── 애니메이션 비활성화 스크립트 ──────────────────
 DISABLE_ANIMATION_SCRIPT = """
 document.addEventListener('DOMContentLoaded', () => {
     const style = document.createElement('style');
@@ -22,8 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(style);
 });
 """
-
-# ── 테스트 케이스 ─────────────────────────────────
 
 async def test_main_page(page):
     await page.goto(BASE_URL)
@@ -52,55 +49,46 @@ async def test_full_flow(page):
     # Step1 약관동의
     await page.wait_for_selector('.terms-all', state='visible')
     await page.click('.terms-all')
-    await page.screenshot(path='step1_after_terms.png')
     await page.click('.bot-bar .btn-p')
-    await page.screenshot(path='step1_after_next.png')
 
     # Step2 차량선택
     await expect(page.locator('#progLabel')).to_contain_text('STEP 2')
-    await page.wait_for_selector('.v-card:first-child', state='visible')
-    await page.screenshot(path='step2.png')
-    await page.click('.v-card:first-child')
+    await page.wait_for_selector('.v-card', state='visible')
+    await page.locator('.v-card').first().click()
     await page.click('.bot-bar .btn-p')
 
     # Step3 차량확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 3')
     await page.wait_for_selector('select.inp', state='visible')
-    await page.screenshot(path='step3.png')
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
     # Step4 운전자선택
     await expect(page.locator('#progLabel')).to_contain_text('STEP 4')
-    await page.wait_for_selector('.chip:has-text("부부")', state='visible')
-    await page.screenshot(path='step4.png')
-    await page.click('.chip:has-text("부부")')
+    await page.wait_for_selector('.chip', state='visible')
+    await page.locator('.chip', has_text='부부').click()
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 5')
     await page.wait_for_selector('.pr-val.big', state='visible')
-    await page.screenshot(path='step5.png')
     await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640')
     await page.click('.bot-bar .btn-p')
 
     # Step6 특약
     await expect(page.locator('#progLabel')).to_contain_text('STEP 6')
     await page.wait_for_selector('.tgl', state='visible')
-    await page.screenshot(path='step6.png')
     await page.click('.bot-bar .btn-p')
 
     # Step7 약관동의
     await expect(page.locator('#progLabel')).to_contain_text('STEP 7')
     await page.wait_for_selector('.terms-all', state='visible')
-    await page.screenshot(path='step7.png')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
 
     # Step8 결제정보
     await expect(page.locator('#progLabel')).to_contain_text('STEP 8')
     await page.wait_for_selector('input[placeholder="MM / YY"]', state='visible')
-    await page.screenshot(path='step8.png')
     await page.fill('input[placeholder="MM / YY"]', '12/26')
     await page.fill('input[placeholder="***"]', '123')
     await page.click('.bot-bar .btn-p')
@@ -108,7 +96,6 @@ async def test_full_flow(page):
     # Step9 완료 확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 9')
     await page.wait_for_selector('.success-em', state='visible')
-    await page.screenshot(path='step9.png')
     await expect(page.locator('.success-em')).to_be_visible()
     await expect(page.locator('.success-title')).to_contain_text('감사드려요')
     return "✅ 청약 전체 플로우 (Step 1~9) 완료"
@@ -119,8 +106,6 @@ async def test_mypage_empty(page):
     await page.click('button.nav-btn-ghost')
     await expect(page.locator('.empty-title')).to_contain_text('가입된 보험이 없어요')
     return "✅ 마이페이지 빈 상태 확인"
-
-# ── 테스트 실행 ───────────────────────────────────
 
 async def run():
     results = {"passed": [], "failed": []}
@@ -150,8 +135,6 @@ async def run():
         await browser.close()
 
     return results
-
-# ── PR 코멘트 등록 ────────────────────────────────
 
 def post_pr_comment(results: dict):
     if not PR_NUMBER or not REPO or not TOKEN:
@@ -199,8 +182,6 @@ def post_pr_comment(results: dict):
     }
     response = requests.post(url, json={"body": comment}, headers=headers)
     print(f"PR 코멘트 등록: {response.status_code}")
-
-# ── 메인 ─────────────────────────────────────────
 
 if __name__ == "__main__":
     results = asyncio.run(run())
