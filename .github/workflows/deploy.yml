@@ -157,7 +157,11 @@ jobs:
           AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
-        run: python3 .github/scripts/ui_test_agent.py
+        run: |
+          echo "=== ui_test_agent.py 내용 확인 ==="
+          grep -n "부부" .github/scripts/ui_test_agent.py
+          echo "=== 실행 ==="
+          python3 .github/scripts/ui_test_agent.py
 
       - name: Upload Screenshots
         if: always()
