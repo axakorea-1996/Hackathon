@@ -52,46 +52,55 @@ async def test_full_flow(page):
     # Step1 약관동의
     await page.wait_for_selector('.terms-all', state='visible')
     await page.click('.terms-all')
+    await page.screenshot(path='step1_after_terms.png')
     await page.click('.bot-bar .btn-p')
+    await page.screenshot(path='step1_after_next.png')
 
     # Step2 차량선택
     await expect(page.locator('#progLabel')).to_contain_text('STEP 2')
     await page.wait_for_selector('.v-card:first-child', state='visible')
+    await page.screenshot(path='step2.png')
     await page.click('.v-card:first-child')
     await page.click('.bot-bar .btn-p')
 
     # Step3 차량확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 3')
     await page.wait_for_selector('select.inp', state='visible')
+    await page.screenshot(path='step3.png')
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
     # Step4 운전자선택
     await expect(page.locator('#progLabel')).to_contain_text('STEP 4')
     await page.wait_for_selector('.chip:has-text("부부")', state='visible')
+    await page.screenshot(path='step4.png')
     await page.click('.chip:has-text("부부")')
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 5')
     await page.wait_for_selector('.pr-val.big', state='visible')
+    await page.screenshot(path='step5.png')
     await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640')
     await page.click('.bot-bar .btn-p')
 
     # Step6 특약
     await expect(page.locator('#progLabel')).to_contain_text('STEP 6')
     await page.wait_for_selector('.tgl', state='visible')
+    await page.screenshot(path='step6.png')
     await page.click('.bot-bar .btn-p')
 
     # Step7 약관동의
     await expect(page.locator('#progLabel')).to_contain_text('STEP 7')
     await page.wait_for_selector('.terms-all', state='visible')
+    await page.screenshot(path='step7.png')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
 
     # Step8 결제정보
     await expect(page.locator('#progLabel')).to_contain_text('STEP 8')
     await page.wait_for_selector('input[placeholder="MM / YY"]', state='visible')
+    await page.screenshot(path='step8.png')
     await page.fill('input[placeholder="MM / YY"]', '12/26')
     await page.fill('input[placeholder="***"]', '123')
     await page.click('.bot-bar .btn-p')
@@ -99,6 +108,7 @@ async def test_full_flow(page):
     # Step9 완료 확인
     await expect(page.locator('#progLabel')).to_contain_text('STEP 9')
     await page.wait_for_selector('.success-em', state='visible')
+    await page.screenshot(path='step9.png')
     await expect(page.locator('.success-em')).to_be_visible()
     await expect(page.locator('.success-title')).to_contain_text('감사드려요')
     return "✅ 청약 전체 플로우 (Step 1~9) 완료"
@@ -127,10 +137,7 @@ async def run():
         for name, fn in TEST_CASES:
             ctx  = await browser.new_context()
             page = await ctx.new_page()
-
-            # 애니메이션 비활성화
             await page.add_init_script(DISABLE_ANIMATION_SCRIPT)
-
             try:
                 msg = await fn(page)
                 results["passed"].append({"name": name, "message": msg})

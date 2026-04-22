@@ -159,6 +159,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: python3 .github/scripts/ui_test_agent.py
 
+      - name: Upload Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-screenshots
+          path: '*.png'
+
       - name: Slack Notify - UI Test Success
         if: success()
         uses: slackapi/slack-github-action@v1.26.0
