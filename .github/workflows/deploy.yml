@@ -140,8 +140,8 @@ jobs:
             REPO="${{ github.repository }}"
             TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
 
-            EC2_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-            echo "EC2 퍼블릭 IP: $EC2_IP"
+            EC2_IP="${{ secrets.EC2_HOST }}"
+            echo "EC2 IP: $EC2_IP"
 
             RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://$EC2_IP/webhook/github \
               -H "Content-Type: application/json" \
