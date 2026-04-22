@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/subscriptions")
 @RequiredArgsConstructor
-@Tag(name = "Subscription", description = "AXA 청약 API")
+@Tag(name = "Subscription", description = "AXA 청약 API!!")
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
