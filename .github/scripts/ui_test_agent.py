@@ -1,6 +1,7 @@
 import asyncio, os, sys, json, traceback, re
 import requests
 import urllib.request
+from html.parser import HTMLParser
 from playwright.async_api import async_playwright, expect
 
 BASE_URL       = os.environ.get("TEST_BASE_URL", "https://axakorea-1996.github.io/Hackathon-FE/a.html")
@@ -22,12 +23,11 @@ style.textContent = `
 document.head.appendChild(style);
 """
 
-# 알려진 실제 텍스트 매핑
 KNOWN_TEXTS = {
-    ".empty-title":  "가입된 보험이 없어요",
+    ".empty-title":   "가입된 보험이 없어요",
     ".success-title": "감사드려요",
-    ".pr-val.big":   "1,019,640",
-    ".logo-box":     "AXA"
+    ".pr-val.big":    "1,019,640",
+    ".logo-box":      "AXA"
 }
 
 # ── HTML 다운로드 ─────────────────────────────────
@@ -42,47 +42,115 @@ def fetch_html(url: str) -> str:
         print(f"HTML 다운로드 실패: {e}")
         return ""
 
+# ── UI 구조 추출 ──────────────────────────────────
+def extract_ui_structure(html: str) -> str:
+    """HTML에서 UI 테스트에 필요한 핵심 구조만 추출"""
+
+    class UIStructureExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.structure    = []
+            self.capture_text = False
+            self.current_tag  = None
+            self.important_tags = {
+                'button', 'input', 'select', 'option',
+                'a', 'div', 'span', 'h1', 'h2', 'h3',
+                'p', 'label'
+            }
+            self.important_classes = {
+                'btn', 'button', 'nav', 'logo', 'hero',
+                'terms', 'chip', 'card', 'prog', 'step',
+                'success', 'empty', 'price', 'shell',
+                'bot-bar', 'inp', 'tgl', 'v-card'
+            }
+
+        def handle_starttag(self, tag, attrs):
+            attrs_dict = dict(attrs)
+            class_val  = attrs_dict.get('class', '')
+            id_val     = attrs_dict.get('id', '')
+            classes    = class_val.split() if class_val else []
+
+            is_important = (
+                tag in {'button', 'input', 'select'} or
+                id_val or
+                any(kw in c for c in classes
+                    for kw in self.important_classes)
+            )
+
+            if is_important:
+                attrs_str = ""
+                if id_val:
+                    attrs_str += f' id="{id_val}"'
+                if class_val:
+                    attrs_str += f' class="{class_val}"'
+                if attrs_dict.get('placeholder'):
+                    attrs_str += f' placeholder="{attrs_dict["placeholder"]}"'
+                if attrs_dict.get('type'):
+                    attrs_str += f' type="{attrs_dict["type"]}"'
+
+                self.structure.append(f"<{tag}{attrs_str}>")
+                self.capture_text = tag in {
+                    'button', 'span', 'div', 'h1', 'h2', 'p', 'label'
+                }
+                self.current_tag = tag
+
+        def handle_data(self, data):
+            data = data.strip()
+            if self.capture_text and data and len(data) < 50:
+                self.structure.append(f"  TEXT: {data}")
+
+        def handle_endtag(self, tag):
+            if tag == self.current_tag:
+                self.capture_text = False
+
+    extractor = UIStructureExtractor()
+    extractor.feed(html)
+    return "\n".join(extractor.structure)
+
 # ── AI 테스트 케이스 검증 및 보정 ─────────────────
 def validate_test_cases(test_cases: list) -> list:
-    invalid_values = ["visible", "hidden", "true", "false", "enabled", "disabled"]
-
+    invalid_values = [
+        "visible", "hidden", "true", "false",
+        "enabled", "disabled"
+    ]
     for tc in test_cases:
         for step in tc.get("steps", []):
             if step.get("action") == "assert":
                 value    = step.get("value", "")
                 selector = step.get("selector", "")
 
-                # 1. 잘못된 value 보정
+                # 잘못된 value 보정
                 if value and str(value).lower() in invalid_values:
-                    print(f"⚠️ 유효하지 않은 assert value 감지: '{value}' → null로 변경")
+                    print(f"⚠️ 유효하지 않은 assert value: '{value}' → null")
                     step["value"] = None
 
-                # 2. 알려진 실제 텍스트로 보정
+                # 알려진 실제 텍스트로 보정
                 if selector in KNOWN_TEXTS:
                     correct = KNOWN_TEXTS[selector]
                     if correct and value != correct:
-                        print(f"⚠️ 텍스트 보정: '{selector}' → '{value}' → '{correct}'")
+                        print(f"⚠️ 텍스트 보정: '{selector}' '{value}' → '{correct}'")
                         step["value"] = correct
-
     return test_cases
 
 # ── AI로 테스트 케이스 생성 (Gemma 4 31B) ────────
 def generate_test_cases_with_ai(html: str) -> list:
-    html_clean = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', html)
-    html_clean = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', html_clean)
-    html_clean = re.sub(r'\s+', ' ', html_clean).strip()
-    html_truncated = html_clean[:8000]
+
+    # UI 구조만 추출 (토큰 절약)
+    ui_structure = extract_ui_structure(html)
+    print(f"UI 구조 추출: {len(ui_structure)}자 "
+          f"(원본 {len(html)}자 대비 "
+          f"{100 - int(len(ui_structure)/len(html)*100)}% 감소)")
 
     prompt = f"""
 당신은 UI 테스트 자동화 전문가입니다.
-아래 AXA 자동차보험 청약 페이지의 HTML을 분석하여
+아래 AXA 자동차보험 청약 페이지의 UI 구조를 분석하여
 Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 
-## HTML (핵심 구조)
-{html_truncated}
+## UI 구조 (인터랙티브 요소 및 주요 컨텐츠)
+{ui_structure}
 
 ## 반드시 지켜야 할 규칙
-1. assert의 value는 반드시 실제 HTML에 있는 텍스트를 넣으세요. 'visible' 같은 단어는 절대 사용 금지
+1. assert의 value는 반드시 실제 UI에 있는 텍스트를 넣으세요. 'visible' 절대 사용 금지
 2. assert에서 텍스트 확인이 불필요하면 value를 null로 설정하세요
 3. .chip은 반드시 Step4에서만 접근하세요 (Step1~3을 거친 후)
 4. Step 순서: 약관동의(1) → 차량선택(2) → 차량확인(3) → 운전자(4) → 설계(5) → 특약(6) → 확인(7) → 결제(8) → 완료(9)
@@ -103,14 +171,13 @@ Playwright Python 테스트 케이스를 JSON 형식으로 생성해주세요.
 - assert: 요소 확인 (value는 실제 텍스트 또는 null)
 - clear_storage: localStorage 항목 삭제 (value에 키 이름)
 
-## 테스트 케이스 구성
-반드시 아래 4개를 생성하세요:
+## 테스트 케이스 구성 (반드시 4개)
 1. 메인 페이지 로드 (.logo-box에서 AXA 텍스트 확인)
 2. 청약 페이지 진입 (청약하기 버튼 클릭 후 STEP 1 확인)
 3. 청약 전체 플로우 Step1~9 (순서대로 모든 Step 통과)
-4. 마이페이지 빈 상태 (localStorage 초기화 후 .empty-title에서 '가입된 보험이 없어요' 확인)
+4. 마이페이지 호출 테스트 (localStorage 초기화 후 .empty-title에서 '가입된 보험이 없어요' 확인)
 
-## 청약 전체 플로우 상세 순서 (반드시 이 순서대로)
+## 청약 전체 플로우 상세 순서
 Step1: .terms-all 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 2 확인
 Step2: .v-card first 클릭 → .bot-bar .btn-p 클릭 → #progLabel STEP 3 확인
 Step3: select.inp 출퇴근용 선택 → .bot-bar .btn-p 클릭 → #progLabel STEP 4 확인
@@ -165,11 +232,20 @@ Step9: .success-em 가시성 확인(value null) → .success-title에서 감사�
             clean = content.replace("```json", "").replace("```", "").strip()
             test_cases = json.loads(clean)["test_cases"]
             test_cases = validate_test_cases(test_cases)
+
+            # AI가 생성한 테스트 케이스 파일 저장 (Artifact용)
+            with open("generated_test_cases.json", "w", encoding="utf-8") as f:
+                json.dump(test_cases, f, ensure_ascii=False, indent=2)
             print(f"AI 테스트 케이스 생성 완료: {len(test_cases)}개")
             return test_cases
     except Exception as e:
         print(f"AI 테스트 케이스 생성 실패, 기본 케이스 사용: {e}")
-        return get_default_test_cases()
+        default = get_default_test_cases()
+        # fallback도 파일 저장
+        with open("generated_test_cases.json", "w", encoding="utf-8") as f:
+            json.dump({"fallback": True, "test_cases": default},
+                      f, ensure_ascii=False, indent=2)
+        return default
 
 # ── 기본 테스트 케이스 (AI 실패 시 fallback) ──────
 def get_default_test_cases() -> list:
@@ -193,49 +269,38 @@ def get_default_test_cases() -> list:
             ]
         },
         {
-            "name": "Step1 약관동의",
-            "description": "약관 전체동의 후 Step2 이동 확인",
-            "steps": [
-                {"action": "goto",   "selector": None,                     "value": None,    "description": "페이지 이동"},
-                {"action": "click",  "selector": "button.nav-btn-primary", "value": None,    "description": "청약하기 클릭"},
-                {"action": "click",  "selector": ".terms-all",             "value": None,    "description": "전체동의 클릭"},
-                {"action": "click",  "selector": ".bot-bar .btn-p",        "value": None,    "description": "다음 클릭"},
-                {"action": "assert", "selector": "#progLabel",             "value": "STEP 2","description": "Step2 확인"}
-            ]
-        },
-        {
             "name": "청약 전체 플로우",
             "description": "Step1~9 전체 청약 프로세스 확인",
             "steps": [
-                {"action": "goto",    "selector": None,                           "value": None,        "description": "페이지 이동"},
-                {"action": "click",   "selector": "button.nav-btn-primary",       "value": None,        "description": "청약하기 클릭"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 1",    "description": "Step1 확인"},
-                {"action": "click",   "selector": ".terms-all",                   "value": None,        "description": "약관 전체동의"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 2",    "description": "Step2 확인"},
-                {"action": "first",   "selector": ".v-card",                      "value": None,        "description": "차량 선택"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 3",    "description": "Step3 확인"},
-                {"action": "select",  "selector": "select.inp",                   "value": "출퇴근용",  "description": "운행형태 선택"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 4",    "description": "Step4 확인"},
-                {"action": "nth",     "selector": ".chip",                        "value": "1",         "description": "부부 선택"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 5",    "description": "Step5 확인"},
-                {"action": "assert",  "selector": ".pr-val.big",                  "value": "1,019,640", "description": "보험료 확인"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 6",    "description": "Step6 확인"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 7",    "description": "Step7 확인"},
-                {"action": "click",   "selector": ".terms-all",                   "value": None,        "description": "약관 동의"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 8",    "description": "Step8 확인"},
-                {"action": "fill",    "selector": 'input[placeholder="MM / YY"]', "value": "12/26",     "description": "유효기간 입력"},
-                {"action": "fill",    "selector": 'input[placeholder="***"]',     "value": "123",       "description": "CVC 입력"},
-                {"action": "click",   "selector": ".bot-bar .btn-p",              "value": None,        "description": "결제"},
-                {"action": "assert",  "selector": "#progLabel",                   "value": "STEP 9",    "description": "Step9 확인"},
-                {"action": "assert",  "selector": ".success-em",                  "value": None,        "description": "완료 이모지 확인"},
-                {"action": "assert",  "selector": ".success-title",               "value": "감사드려요", "description": "완료 메시지 확인"}
+                {"action": "goto",   "selector": None,                           "value": None,        "description": "페이지 이동"},
+                {"action": "click",  "selector": "button.nav-btn-primary",       "value": None,        "description": "청약하기 클릭"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 1",    "description": "Step1 확인"},
+                {"action": "click",  "selector": ".terms-all",                   "value": None,        "description": "약관 전체동의"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 2",    "description": "Step2 확인"},
+                {"action": "first",  "selector": ".v-card",                      "value": None,        "description": "차량 선택"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 3",    "description": "Step3 확인"},
+                {"action": "select", "selector": "select.inp",                   "value": "출퇴근용",  "description": "운행형태 선택"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 4",    "description": "Step4 확인"},
+                {"action": "nth",    "selector": ".chip",                        "value": "1",         "description": "부부 선택"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 5",    "description": "Step5 확인"},
+                {"action": "assert", "selector": ".pr-val.big",                  "value": "1,019,640", "description": "보험료 확인"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 6",    "description": "Step6 확인"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 7",    "description": "Step7 확인"},
+                {"action": "click",  "selector": ".terms-all",                   "value": None,        "description": "약관 동의"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "다음"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 8",    "description": "Step8 확인"},
+                {"action": "fill",   "selector": 'input[placeholder="MM / YY"]', "value": "12/26",     "description": "유효기간 입력"},
+                {"action": "fill",   "selector": 'input[placeholder="***"]',     "value": "123",       "description": "CVC 입력"},
+                {"action": "click",  "selector": ".bot-bar .btn-p",              "value": None,        "description": "결제"},
+                {"action": "assert", "selector": "#progLabel",                   "value": "STEP 9",    "description": "Step9 확인"},
+                {"action": "assert", "selector": ".success-em",                  "value": None,        "description": "완료 이모지 확인"},
+                {"action": "assert", "selector": ".success-title",               "value": "감사드려요", "description": "완료 메시지 확인"}
             ]
         },
         {
@@ -336,7 +401,9 @@ async def execute_steps(page, steps: list):
         elif action == "assert":
             await page.wait_for_selector(selector, state='visible', timeout=10000)
             if value:
-                await expect(page.locator(selector)).to_contain_text(value, timeout=10000)
+                await expect(page.locator(selector)).to_contain_text(
+                    value, timeout=10000
+                )
             else:
                 await expect(page.locator(selector)).to_be_visible(timeout=10000)
 
@@ -443,6 +510,9 @@ if __name__ == "__main__":
     else:
         print("AI 없이 기본 테스트 케이스 사용")
         test_cases = get_default_test_cases()
+        with open("generated_test_cases.json", "w", encoding="utf-8") as f:
+            json.dump({"fallback": True, "test_cases": test_cases},
+                      f, ensure_ascii=False, indent=2)
 
     print(f"\n총 {len(test_cases)}개 테스트 케이스 실행\n")
 
