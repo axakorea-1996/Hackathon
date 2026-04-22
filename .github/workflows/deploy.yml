@@ -6,6 +6,9 @@ on:
 
 jobs:
   build-and-deploy:
+    if: |
+      !startsWith(github.event.head_commit.message, 'Merge branch') &&
+      !startsWith(github.event.head_commit.message, 'Merge pull request')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
@@ -137,7 +140,7 @@ jobs:
             REPO="${{ github.repository }}"
             TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
 
-            curl -s -X POST http://localhost/webhook/github \
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:8080/webhook/github \
               -H "Content-Type: application/json" \
               -H "X-GitHub-Event: pull_request" \
               -d "{
@@ -149,8 +152,16 @@ jobs:
                 \"repository\": {
                   \"full_name\": \"$REPO\"
                 }
-              }"
-            echo "webhook 호출 완료"
+              }")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            echo "webhook 응답 코드: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ webhook 호출 성공"
+            else
+              echo "❌ webhook 호출 실패: $HTTP_CODE"
+            fi
 
   ui-test:
     needs: create-pr
