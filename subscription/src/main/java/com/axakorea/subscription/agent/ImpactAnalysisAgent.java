@@ -124,6 +124,7 @@ public class ImpactAnalysisAgent {
     // ── 다이어그램 생성 프롬프트 ─────────────────────
     private String buildDiagramSystemPrompt() {
         return """
+
                 당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
                 
                 역할:
@@ -146,6 +147,7 @@ public class ImpactAnalysisAgent {
                     올바른 예시: A -->|calls| B
                     잘못된 예시: A -->|calls()| B
                 """;
+
     }
 
     private String buildDiagramUserPrompt(String prTitle,
