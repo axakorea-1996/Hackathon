@@ -140,10 +140,8 @@ jobs:
             REPO="${{ github.repository }}"
             TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
 
-            EC2_IP="${{ secrets.EC2_HOST }}"
-            echo "EC2 IP: $EC2_IP"
-
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://$EC2_IP/webhook/github \
+            # EC2 내부에서 localhost로 호출 (nohup으로 백그라운드 실행)
+            nohup curl -s -X POST http://localhost/webhook/github \
               -H "Content-Type: application/json" \
               -H "X-GitHub-Event: pull_request" \
               -d "{
@@ -155,15 +153,11 @@ jobs:
                 \"repository\": {
                   \"full_name\": \"$REPO\"
                 }
-              }")
+              }" > /tmp/webhook_response.txt 2>&1 &
 
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            echo "webhook 응답 코드: $HTTP_CODE"
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ webhook 호출 성공"
-            else
-              echo "❌ webhook 호출 실패: $HTTP_CODE"
-            fi
+            sleep 2
+            cat /tmp/webhook_response.txt
+            echo "webhook 호출 완료"
 
   ui-test:
     needs: create-pr
