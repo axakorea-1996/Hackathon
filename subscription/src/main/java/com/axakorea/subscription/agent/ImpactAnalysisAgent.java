@@ -43,7 +43,7 @@ public class ImpactAnalysisAgent {
             // Step 4. diff 정리
             String diffSummary = buildDiffSummary(changedFiles);
 
-            // Step 5. AI 분석 병렬 실행 (영향도 분석 + Mermaid 다이어그램 동시 실행)
+            // Step 5. AI 분석 병렬 실행
             CompletableFuture<String> analysisFuture = CompletableFuture.supplyAsync(() ->
                     openRouterClient.analyze(
                             buildSystemPrompt(),
@@ -145,6 +145,13 @@ public class ImpactAnalysisAgent {
                 11. 화살표 레이블에 특수문자를 사용하지 마세요
                     올바른 예시: A -->|calls| B
                     잘못된 예시: A -->|calls()| B
+                12. style 명령어에는 반드시 노드 ID만 사용하세요
+                    올바른 예시: style DB fill:#CCCCCC,color:#000
+                    잘못된 예시: style DB[(Database)] fill:#CCCCCC,color:#000
+                13. DB 노드는 노드 정의와 style을 반드시 분리하세요
+                    올바른 예시:
+                    DB[(Database)]
+                    style DB fill:#CCCCCC,color:#000,stroke:#999999
                 """;
     }
 
@@ -170,7 +177,11 @@ public class ImpactAnalysisAgent {
                 2. 변경된 클래스는 빨간색으로 강조하세요
                 3. 영향받는 기존 클래스는 노란색으로 표시하세요
                 4. 클래스 간 호출 관계를 화살표로 연결하세요
-                5. DB 테이블과의 연관관계도 포함하세요 (DB 노드는 원통형으로)
+                5. DB 테이블과의 연관관계도 포함하세요
+                6. DB 노드는 반드시 노드 정의와 style을 분리하여 작성하세요
+                   올바른 예시:
+                   DB[(Database)]
+                   style DB fill:#CCCCCC,color:#000,stroke:#999999
                 
                 반드시 ```mermaid 블록으로 감싸서 반환하세요.
                 """.formatted(prTitle, changedFileNames, existingContext);
