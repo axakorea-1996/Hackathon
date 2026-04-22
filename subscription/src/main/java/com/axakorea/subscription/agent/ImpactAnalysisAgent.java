@@ -43,7 +43,7 @@ public class ImpactAnalysisAgent {
             // Step 4. diff 정리
             String diffSummary = buildDiffSummary(changedFiles);
 
-            // Step 5. AI 분석 병렬 실행 (영향도 분석 + Mermaid 다이어그램 동시 실행)
+            // Step 5. AI 분석 병렬 실행
             CompletableFuture<String> analysisFuture = CompletableFuture.supplyAsync(() ->
                     openRouterClient.analyze(
                             buildSystemPrompt(),
@@ -133,34 +133,25 @@ public class ImpactAnalysisAgent {
                 절대 지켜야 할 규칙:
                 1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
                 2. flowchart TD 방향을 사용하세요
-                3. 노드 라벨에 절대 \\n 사용 금지 — 한 줄로만 작성하세요
-                4. 노드 ID는 영문자와 숫자만 사용 (특수문자, 공백, 슬래시 금지)
-                5. style 구문에서 노드 ID만 사용하세요
-                   올바른 예: style MyNode fill:#FF6B6B,color:#000
-                   잘못된 예: style MyNode[(Database)] fill:#FF6B6B  ← 절대 금지
-                6. DB 노드는 반드시 아래처럼 선언하고 style은 ID만 사용하세요:
-                   DB[(Database)]
-                   style DB fill:#CCCCCC,color:#000
-                7. 변경된 파일은 빨간색 (fill:#FF6B6B,color:#000)
-                8. 영향받는 파일은 노란색 (fill:#FFE66D,color:#000)
-                9. 화살표 라벨은 2-4자로 짧게 (호출, 조회, 매핑, 사용)
-                10. 다이어그램 코드만 반환, 설명 텍스트 포함 금지
-                
-                올바른 예시 (반드시 이 형식을 따르세요):
-                ```mermaid
-                flowchart TD
-                    Controller["SubscriptionController"]
-                    Service["SubscriptionService"]
-                    Repository["SubscriptionRepository"]
+                3. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
+                4. 영향받는 기존 파일은 노란색(style fill:#FFE66D,color:#000)으로 표시하세요
+                5. 영향없는 파일은 기본색으로 표시하세요
+                6. 클래스 간 의존 관계를 화살표로 표현하세요
+                7. 다이어그램만 반환하고 설명 텍스트는 포함하지 마세요
+                8. 노드 이름에 특수문자(괄호, 슬래시, 점 등)를 사용하지 마세요
+                9. 노드 이름은 영문 알파벳과 숫자만 사용하세요
+                10. 노드 레이블에 한글을 사용할 경우 큰따옴표로 감싸세요
+                    예시: A["구독서비스"] --> B["컨트롤러"]
+                11. 화살표 레이블에 특수문자를 사용하지 마세요
+                    올바른 예시: A -->|calls| B
+                    잘못된 예시: A -->|calls()| B
+                12. style 명령어에는 반드시 노드 ID만 사용하세요
+                    올바른 예시: style DB fill:#CCCCCC,color:#000
+                    잘못된 예시: style DB[(Database)] fill:#CCCCCC,color:#000
+                13. DB 노드는 노드 정의와 style을 반드시 분리하세요
+                    올바른 예시:
                     DB[(Database)]
-                    Controller -->|호출| Service
-                    Service -->|조회| Repository
-                    Repository -->|쿼리| DB
-                    style Controller fill:#FF6B6B,color:#000
-                    style Service fill:#FFE66D,color:#000
-                    style Repository fill:#FFE66D,color:#000
-                    style DB fill:#CCCCCC,color:#000
-                ```
+                    style DB fill:#CCCCCC,color:#000,stroke:#999999
                 """;
     }
 
@@ -182,11 +173,23 @@ public class ImpactAnalysisAgent {
                 
                 위 정보를 기반으로 Mermaid 다이어그램을 생성해주세요.
                 
+                1. MVC 계층 구조를 표현하세요 (Controller → Service → Repository → Domain)
+                2. 변경된 클래스는 빨간색으로 강조하세요
+                3. 영향받는 기존 클래스는 노란색으로 표시하세요
+                4. 클래스 간 호출 관계를 화살표로 연결하세요
+                5. DB 테이블과의 연관관계도 포함하세요
+                6. DB 노드는 반드시 노드 정의와 style을 분리하여 작성하세요
+                   올바른 예시:
+                   DB[(Database)]
+                   style DB fill:#CCCCCC,color:#000,stroke:#999999
+                
+                반드시 ```mermaid 블록으로 감싸서 반환하세요.
                 반드시 지킬 것:
                 - 노드 라벨에 \\n 사용 절대 금지
                 - style 구문에 노드 ID만 사용 (괄호, 특수문자 금지)
                 - DB 노드는 선언: DB[(Database)], 스타일: style DB fill:#CCCCCC,color:#000
                 - ```mermaid 블록으로 감싸서 반환
+
                 """.formatted(prTitle, changedFileNames, existingContext);
     }
 
