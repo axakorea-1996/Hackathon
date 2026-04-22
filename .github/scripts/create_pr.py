@@ -7,7 +7,7 @@ sha    = os.environ['SHA']
 actor  = os.environ['ACTOR']
 output = os.environ['GITHUB_OUTPUT']
 
-# 기존 PR 확인
+# 열린 PR 전체 조회
 req = urllib.request.Request(
     f'https://api.github.com/repos/{repo}/pulls?state=open&head=axakorea-1996:dev&base=main',
     headers={
@@ -18,11 +18,19 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req) as res:
     prs = json.loads(res.read().decode())
 
-if prs:
-    pr_number = prs[0]['number']
-    print(f"이미 열린 PR 있음: #{pr_number}")
+# actor가 작성한 PR인지 body에서 확인
+my_pr = None
+for pr in prs:
+    body = pr.get('body', '') or ''
+    if f'**작성자:** {actor}' in body:
+        my_pr = pr
+        break
+
+if my_pr:
+    pr_number = my_pr['number']
+    print(f"기존 PR 재사용 (작성자: {actor}): #{pr_number}")
 else:
-    # PR 생성
+    # 새 PR 생성
     body = {
         'title': msg,
         'head':  'dev',
@@ -43,12 +51,11 @@ else:
         with urllib.request.urlopen(req) as res:
             result = json.loads(res.read().decode())
         pr_number = result['number']
-        print(f"PR 생성 완료: #{pr_number}")
+        print(f"PR 생성 완료 (작성자: {actor}): #{pr_number}")
     except urllib.error.HTTPError as e:
         error_body = e.read().decode()
         print(f"PR 생성 실패: {e.code} - {error_body}")
         if e.code == 422:
-            # 422면 재조회
             print("422 에러 - 기존 PR 재조회")
             req2 = urllib.request.Request(
                 f'https://api.github.com/repos/{repo}/pulls?state=open&head=axakorea-1996:dev&base=main',
@@ -59,9 +66,13 @@ else:
             )
             with urllib.request.urlopen(req2) as res2:
                 prs2 = json.loads(res2.read().decode())
-            if prs2:
-                pr_number = prs2[0]['number']
-                print(f"기존 PR 사용: #{pr_number}")
+            # 422도 actor 기준으로 필터링
+            for pr in prs2:
+                body_text = pr.get('body', '') or ''
+                if f'**작성자:** {actor}' in body_text:
+                    pr_number = pr['number']
+                    print(f"기존 PR 사용 (작성자: {actor}): #{pr_number}")
+                    break
             else:
                 print("PR 없음, 스킵")
                 pr_number = None
@@ -70,5 +81,4 @@ else:
 
 if pr_number:
     with open(output, 'a') as f:
-        f.write(f"pr_number={pr_number}\n")
         f.write(f"pr_number={pr_number}\n")

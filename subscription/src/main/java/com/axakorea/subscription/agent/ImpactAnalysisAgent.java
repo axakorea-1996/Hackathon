@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -26,29 +27,42 @@ public class ImpactAnalysisAgent {
         log.info("영향도 분석 시작: PR #{} - {}", prNumber, prTitle);
 
         try {
+            // Step 1. 변경된 파일 수집
             List<ChangedFile> changedFiles = gitHubClient.getPrFiles(repo, prNumber);
             if (changedFiles.isEmpty()) {
                 log.info("PR #{} 변경 파일 없음, 분석 종료", prNumber);
                 return;
             }
 
+            // Step 2. 기존 연관 코드 수집
             String existingContext = contextCollector.collectRelatedContext(repo, changedFiles);
-            String dependencyTree  = dependencyAnalyzer.analyze(changedFiles);
-            String diffSummary     = buildDiffSummary(changedFiles);
 
-            // AI 영향도 분석
-            String analysisResult = openRouterClient.analyze(
-                    buildSystemPrompt(),
-                    buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
+            // Step 3. 의존성 트리 분석
+            String dependencyTree = dependencyAnalyzer.analyze(changedFiles);
+
+            // Step 4. diff 정리
+            String diffSummary = buildDiffSummary(changedFiles);
+
+            // Step 5. AI 분석 병렬 실행
+            CompletableFuture<String> analysisFuture = CompletableFuture.supplyAsync(() ->
+                    openRouterClient.analyze(
+                            buildSystemPrompt(),
+                            buildUserPrompt(prTitle, diffSummary, existingContext, dependencyTree)
+                    )
             );
 
-            // AI Mermaid 다이어그램 생성
-            String mermaidDiagram = openRouterClient.analyze(
-                    buildDiagramSystemPrompt(),
-                    buildDiagramUserPrompt(prTitle, changedFiles, existingContext)
+            CompletableFuture<String> diagramFuture = CompletableFuture.supplyAsync(() ->
+                    openRouterClient.analyze(
+                            buildDiagramSystemPrompt(),
+                            buildDiagramUserPrompt(prTitle, changedFiles, existingContext)
+                    )
             );
 
-            // PR 댓글 등록 (분석 + 다이어그램)
+            // Step 6. 둘 다 완료될 때까지 대기
+            String analysisResult = analysisFuture.get();
+            String mermaidDiagram = diagramFuture.get();
+
+            // Step 7. PR 댓글 등록
             String comment = formatComment(analysisResult, mermaidDiagram, changedFiles);
             gitHubClient.postComment(repo, prNumber, comment);
 
@@ -61,7 +75,7 @@ public class ImpactAnalysisAgent {
         }
     }
 
-    // ── 영향도 분석 프롬프트 ─────────────────────────
+    // ── 영향도 분석 프롬프트 ──────────────────────────
     private String buildSystemPrompt() {
         return """
                 당신은 Spring Boot MVC 프로젝트 전문 시니어 아키텍처 리뷰어입니다.
@@ -107,7 +121,7 @@ public class ImpactAnalysisAgent {
                 """.formatted(prTitle, depTree, diff, existingCode);
     }
 
-    // ── 다이어그램 생성 프롬프트 ─────────────────────
+    // ── 다이어그램 생성 프롬프트 ──────────────────────
     private String buildDiagramSystemPrompt() {
         return """
             당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
@@ -158,7 +172,7 @@ public class ImpactAnalysisAgent {
             """.formatted(prTitle, changedFileNames, existingContext);
     }
 
-    // ── PR 댓글 포맷 ─────────────────────────────────
+    // ── PR 댓글 포맷 ──────────────────────────────────
     private String formatComment(String aiResult,
                                  String mermaidDiagram,
                                  List<ChangedFile> changedFiles) {
@@ -189,15 +203,15 @@ public class ImpactAnalysisAgent {
                 """.formatted(fileList, mermaidDiagram, aiResult);
     }
 
-    // ── 유틸 ─────────────────────────────────────────
+    // ── 유틸 ──────────────────────────────────────────
     private String buildDiffSummary(List<ChangedFile> files) {
         return files.stream()
                 .map(f -> """
                         ### %s
                         - 추가: +%d줄 / 삭제: -%d줄
-                        ```java
+```java
                         %s
-                        ```
+```
                         """.formatted(
                         f.getFilename(),
                         f.getAdditions(),
@@ -207,8 +221,6 @@ public class ImpactAnalysisAgent {
                 .collect(Collectors.joining("\n"));
     }
 
-    // 파일 경로 → 클래스명 추출
-    // 예) subscription/src/.../SubscriptionService.java → SubscriptionService
     private String extractClassName(String filePath) {
         String fileName = filePath.contains("/")
                 ? filePath.substring(filePath.lastIndexOf('/') + 1)

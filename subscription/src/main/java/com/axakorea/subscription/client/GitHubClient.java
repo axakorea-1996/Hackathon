@@ -74,7 +74,7 @@ public class GitHubClient {
                     new HttpEntity<>(Map.of("body", body), githubHeaders()),
                     Map.class
             );
-            log.info("PR #{} 댓글 등록 완료", prNumber);
+            log.info("PR #{} 댓글 등록 완료!!", prNumber);
 
         } catch (Exception e) {
             log.error("PR 댓글 등록 실패: #{}", prNumber, e);
