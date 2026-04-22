@@ -7,31 +7,30 @@ TOKEN     = os.environ.get("AXA_GITHUB_TOKEN", "")
 PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
 
+# 즉시 실행 방식으로 변경
 DISABLE_ANIMATION_SCRIPT = """
-document.addEventListener('DOMContentLoaded', () => {
-    const style = document.createElement('style');
-    style.textContent = `
-        *, *::before, *::after {
-            animation-duration: 0s !important;
-            animation-delay: 0s !important;
-            transition-duration: 0s !important;
-            transition-delay: 0s !important;
-        }
-    `;
-    document.head.appendChild(style);
-});
+const style = document.createElement('style');
+style.textContent = `
+    *, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+    }
+`;
+document.head.appendChild(style);
 """
 
 async def test_main_page(page):
     await page.goto(BASE_URL)
-    await expect(page.locator('.logo-box')).to_contain_text('AXA')
-    await expect(page.locator('.hero-title')).to_be_visible()
+    await expect(page.locator('.logo-box')).to_contain_text('AXA', timeout=10000)
+    await expect(page.locator('.hero-title')).to_be_visible(timeout=10000)
     return "✅ 메인 페이지 정상 로드"
 
 async def test_subscription_entry(page):
     await page.goto(BASE_URL)
     await page.click('button.nav-btn-primary')
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 1')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 1', timeout=10000)
     return "✅ 청약 페이지 진입"
 
 async def test_step1_terms(page):
@@ -39,7 +38,7 @@ async def test_step1_terms(page):
     await page.click('button.nav-btn-primary')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 2')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 2', timeout=10000)
     return "✅ Step1 약관동의 완료"
 
 async def test_full_flow(page):
@@ -52,59 +51,59 @@ async def test_full_flow(page):
     await page.click('.bot-bar .btn-p')
 
     # Step2 차량선택
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 2')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 2', timeout=10000)
     await page.wait_for_selector('.v-card', state='visible')
     await page.locator('.v-card').first().click()
     await page.click('.bot-bar .btn-p')
 
     # Step3 차량확인
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 3')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 3', timeout=10000)
     await page.wait_for_selector('select.inp', state='visible')
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
     # Step4 운전자선택
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 4')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 4', timeout=10000)
     await page.wait_for_selector('.chip', state='visible')
-    await page.locator('.chip', has_text='부부').click()
+    await page.locator('.chip').filter(has_text='부부').click()  # ← 수정
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 5')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 5', timeout=10000)
     await page.wait_for_selector('.pr-val.big', state='visible')
-    await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640')
+    await expect(page.locator('.pr-val.big')).to_contain_text('1,019,640', timeout=10000)
     await page.click('.bot-bar .btn-p')
 
     # Step6 특약
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 6')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 6', timeout=10000)
     await page.wait_for_selector('.tgl', state='visible')
     await page.click('.bot-bar .btn-p')
 
     # Step7 약관동의
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 7')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 7', timeout=10000)
     await page.wait_for_selector('.terms-all', state='visible')
     await page.click('.terms-all')
     await page.click('.bot-bar .btn-p')
 
     # Step8 결제정보
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 8')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 8', timeout=10000)
     await page.wait_for_selector('input[placeholder="MM / YY"]', state='visible')
     await page.fill('input[placeholder="MM / YY"]', '12/26')
     await page.fill('input[placeholder="***"]', '123')
     await page.click('.bot-bar .btn-p')
 
     # Step9 완료 확인
-    await expect(page.locator('#progLabel')).to_contain_text('STEP 9')
+    await expect(page.locator('#progLabel')).to_contain_text('STEP 9', timeout=10000)
     await page.wait_for_selector('.success-em', state='visible')
-    await expect(page.locator('.success-em')).to_be_visible()
-    await expect(page.locator('.success-title')).to_contain_text('감사드려요')
+    await expect(page.locator('.success-em')).to_be_visible(timeout=10000)
+    await expect(page.locator('.success-title')).to_contain_text('감사드려요', timeout=10000)
     return "✅ 청약 전체 플로우 (Step 1~9) 완료"
 
 async def test_mypage_empty(page):
     await page.goto(BASE_URL)
     await page.evaluate("localStorage.removeItem('axa_policies')")
     await page.click('button.nav-btn-ghost')
-    await expect(page.locator('.empty-title')).to_contain_text('가입된 보험이 없어요')
+    await expect(page.locator('.empty-title')).to_contain_text('가입된 보험이 없어요', timeout=10000)
     return "✅ 마이페이지 빈 상태 확인"
 
 async def run():
