@@ -52,7 +52,8 @@ async def test_full_flow(page):
     # Step2 차량선택
     await expect(page.locator('#progLabel')).to_contain_text('STEP 2', timeout=10000)
     await page.wait_for_selector('.v-card', state='visible')
-    await page.locator('.v-card').first().click()
+    await page.locator('.v-card').first.click()  # ← first() → first
+
     await page.click('.bot-bar .btn-p')
 
     # Step3 차량확인
@@ -127,7 +128,7 @@ async def run():
                 results["passed"].append({"name": name, "message": msg})
                 print(f"PASS: {name}")
             except Exception as e:
-                traceback.print_exc()  # 정확한 에러 라인 출력
+                traceback.print_exc()
                 results["failed"].append({"name": name, "error": str(e)})
                 print(f"FAIL: {name} → {e}")
             finally:
