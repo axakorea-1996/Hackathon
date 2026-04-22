@@ -140,7 +140,7 @@ jobs:
             REPO="${{ github.repository }}"
             TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
 
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:8080/webhook/github \
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:80/webhook/github \
               -H "Content-Type: application/json" \
               -H "X-GitHub-Event: pull_request" \
               -d "{
@@ -156,7 +156,6 @@ jobs:
 
             HTTP_CODE=$(echo "$RESPONSE" | tail -1)
             echo "webhook 응답 코드: $HTTP_CODE"
-
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ webhook 호출 성공"
             else
