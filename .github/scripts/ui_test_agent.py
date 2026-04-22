@@ -7,7 +7,6 @@ TOKEN     = os.environ.get("AXA_GITHUB_TOKEN", "")
 PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
 
-# 즉시 실행 방식으로 변경
 DISABLE_ANIMATION_SCRIPT = """
 const style = document.createElement('style');
 style.textContent = `
@@ -62,10 +61,10 @@ async def test_full_flow(page):
     await page.select_option('select.inp', '출퇴근용')
     await page.click('.bot-bar .btn-p')
 
-    # Step4 운전자선택
+    # Step4 운전자선택 - 부부는 index 1 (본인, 부부, 지정1인, 누구나...)
     await expect(page.locator('#progLabel')).to_contain_text('STEP 4', timeout=10000)
     await page.wait_for_selector('.chip', state='visible')
-    await page.locator('.chip').filter(has_text='부부').click()  # ← 수정
+    await page.locator('.chip').nth(1).click()
     await page.click('.bot-bar .btn-p')
 
     # Step5 보험료 확인
