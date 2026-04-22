@@ -6,6 +6,9 @@ on:
 
 jobs:
   build-and-deploy:
+    if: |
+      !startsWith(github.event.head_commit.message, 'Merge branch') &&
+      !startsWith(github.event.head_commit.message, 'Merge pull request')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
@@ -125,14 +128,40 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: python3 .github/scripts/create_pr.py
 
-      - name: Trigger Webhook Manually
+      - name: Trigger Webhook via SSH
         if: steps.create_pr.outputs.pr_number != ''
-        env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
-        run: python3 .github/scripts/trigger_webhook.py
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            PR_NUMBER=${{ steps.create_pr.outputs.pr_number }}
+            REPO="${{ github.repository }}"
+            TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:8080/webhook/github \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: pull_request" \
+              -d "{
+                \"action\": \"opened\",
+                \"pull_request\": {
+                  \"number\": $PR_NUMBER,
+                  \"title\": \"$TITLE\"
+                },
+                \"repository\": {
+                  \"full_name\": \"$REPO\"
+                }
+              }")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            echo "webhook 응답 코드: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ webhook 호출 성공"
+            else
+              echo "❌ webhook 호출 실패: $HTTP_CODE"
+            fi
 
   ui-test:
     needs: create-pr
@@ -157,11 +186,7 @@ jobs:
           AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
-        run: |
-          echo "=== ui_test_agent.py 내용 확인 ==="
-          grep -n "부부" .github/scripts/ui_test_agent.py
-          echo "=== 실행 ==="
-          python3 .github/scripts/ui_test_agent.py
+        run: python3 .github/scripts/ui_test_agent.py
 
       - name: Upload Screenshots
         if: always()
