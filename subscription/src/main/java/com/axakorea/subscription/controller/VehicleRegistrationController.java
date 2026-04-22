@@ -18,5 +18,6 @@ public class VehicleRegistrationController {
                             @RequestParam String modelName) {
 
         return subscriptionService.registerVehicle(phone, plateNumber, modelName);
+
     }
 }
