@@ -75,7 +75,7 @@ public class ImpactAnalysisAgent {
         }
     }
 
-    // ── 영향도 분석 프롬프트 ─────────────────────────
+    // ── 영향도 분석 프롬프트 ──────────────────────────
     private String buildSystemPrompt() {
         return """
                 당신은 Spring Boot MVC 프로젝트 전문 시니어 아키텍처 리뷰어입니다.
@@ -121,7 +121,7 @@ public class ImpactAnalysisAgent {
                 """.formatted(prTitle, depTree, diff, existingCode);
     }
 
-    // ── 다이어그램 생성 프롬프트 ─────────────────────
+    // ── 다이어그램 생성 프롬프트 ──────────────────────
     private String buildDiagramSystemPrompt() {
         return """
                 당신은 소프트웨어 아키텍처 다이어그램 전문가입니다.
@@ -130,7 +130,7 @@ public class ImpactAnalysisAgent {
                 - 변경된 코드와 기존 코드의 관계를 Mermaid 다이어그램으로 표현합니다
                 - GitHub PR 댓글에 렌더링될 수 있는 유효한 Mermaid 문법을 사용합니다
                 
-                규칙:
+                절대 지켜야 할 규칙:
                 1. 반드시 ```mermaid 코드 블록으로 감싸서 반환하세요
                 2. flowchart TD 방향을 사용하세요
                 3. 변경된 파일은 빨간색(style fill:#FF6B6B,color:#000)으로 표시하세요
@@ -171,7 +171,7 @@ public class ImpactAnalysisAgent {
                 ## 기존 연관 코드
                 %s
                 
-                위 정보를 기반으로 아래 조건에 맞는 Mermaid 다이어그램을 생성해주세요:
+                위 정보를 기반으로 Mermaid 다이어그램을 생성해주세요.
                 
                 1. MVC 계층 구조를 표현하세요 (Controller → Service → Repository → Domain)
                 2. 변경된 클래스는 빨간색으로 강조하세요
@@ -184,10 +184,16 @@ public class ImpactAnalysisAgent {
                    style DB fill:#CCCCCC,color:#000,stroke:#999999
                 
                 반드시 ```mermaid 블록으로 감싸서 반환하세요.
+                반드시 지킬 것:
+                - 노드 라벨에 \\n 사용 절대 금지
+                - style 구문에 노드 ID만 사용 (괄호, 특수문자 금지)
+                - DB 노드는 선언: DB[(Database)], 스타일: style DB fill:#CCCCCC,color:#000
+                - ```mermaid 블록으로 감싸서 반환
+
                 """.formatted(prTitle, changedFileNames, existingContext);
     }
 
-    // ── PR 댓글 포맷 ─────────────────────────────────
+    // ── PR 댓글 포맷 ──────────────────────────────────
     private String formatComment(String aiResult,
                                  String mermaidDiagram,
                                  List<ChangedFile> changedFiles) {
@@ -218,7 +224,7 @@ public class ImpactAnalysisAgent {
                 """.formatted(fileList, mermaidDiagram, aiResult);
     }
 
-    // ── 유틸 ─────────────────────────────────────────
+    // ── 유틸 ──────────────────────────────────────────
     private String buildDiffSummary(List<ChangedFile> files) {
         return files.stream()
                 .map(f -> """
