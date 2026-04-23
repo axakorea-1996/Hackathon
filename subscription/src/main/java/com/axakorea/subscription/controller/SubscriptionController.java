@@ -8,12 +8,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/subscriptions")
 @RequiredArgsConstructor
@@ -28,9 +30,11 @@ public class SubscriptionController {
     public ResponseEntity<ApiResponse<SubscriptionResponseDto>> create(
             @RequestBody @Valid SubscriptionRequestDto request) {
 
+        SubscriptionResponseDto response = subscriptionService.create(request);
+        log.info("계약저장완료");
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(subscriptionService.create(request)));
+                .body(ApiResponse.ok(response));
     }
 
     // GET /api/subscriptions/my?phone=010-1234-5678  ← 내 청약 조회
