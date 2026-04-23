@@ -31,8 +31,7 @@ public class SubscriptionController {
             @RequestBody @Valid SubscriptionRequestDto request) {
 
         SubscriptionResponseDto response = subscriptionService.create(request);
-        log.info("계약저장완료");
-        return ResponseEntity
+              return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(response));
     }
