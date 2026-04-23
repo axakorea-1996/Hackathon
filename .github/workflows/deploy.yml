@@ -180,15 +180,14 @@ jobs:
             --output ../outputs/changed_methods.json
 
       - name: Generate JUnit tests
-        working-directory: subscription
         env:
           OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_BASE_URL: https://openrouter.ai/api/v1
           OPENAI_MODEL: openai/gpt-4.1-mini
         run: |
-          python ../.github/scripts/testgen/generate_junit_tests.py \
-            --changed-methods-json ../outputs/changed_methods.json \
-            --output-dir src/test/java
+          python .github/scripts/testgen/generate_junit_tests.py \
+            --changed-methods-json outputs/changed_methods.json \
+            --output-dir subscription/src/test/java
 
       - name: Run Gradle tests
         working-directory: subscription
