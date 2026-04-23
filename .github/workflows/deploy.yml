@@ -164,20 +164,29 @@ jobs:
       - name: Install Python dependencies
         run: pip install openai requests
 
+      - name: Create outputs directory
+        run: mkdir -p outputs
+
       - name: Extract changed Java files
-        working-directory: subscription
         run: |
-          python ../.github/scripts/testgen/extract_diff.py \
+          python .github/scripts/testgen/extract_diff.py \
             --base-ref HEAD~1 \
             --head-ref HEAD \
-            --output ../outputs/changed_files.json
+            --output outputs/changed_files.json
+
+      - name: Show changed_files.json
+        if: always()
+        run: cat outputs/changed_files.json || true
 
       - name: Extract changed methods
-        working-directory: subscription
         run: |
-          python ../.github/scripts/testgen/extract_changed_methods.py \
-            --changed-files-json ../outputs/changed_files.json \
-            --output ../outputs/changed_methods.json
+          python .github/scripts/testgen/extract_changed_methods.py \
+            --changed-files-json outputs/changed_files.json \
+            --output outputs/changed_methods.json
+
+      - name: Show changed_methods.json
+        if: always()
+        run: cat outputs/changed_methods.json || true
 
       - name: Generate JUnit tests
         env:
@@ -189,14 +198,22 @@ jobs:
             --changed-methods-json outputs/changed_methods.json \
             --output-dir subscription/src/test/java
 
+      - name: Show generated JUnit files
+        if: always()
+        run: |
+          find subscription/src/test/java -name '*GeneratedTest.java' -print || true
+
       - name: Run Gradle tests
         working-directory: subscription
         run: |
           chmod +x ./gradlew
-          ./gradlew test \
-            --no-daemon \
-            -Dorg.gradle.java.installations.auto-detect=false \
-            | tee ../outputs/gradle_test.log || true
+          ./gradlew test | tee ../outputs/gradle_test.log || true
+
+      - name: Show test results
+        if: always()
+        run: |
+          find subscription/build/test-results/test \
+            -name '*GeneratedTest*.xml' -print -exec cat {} \; || true
 
       - name: Post PR Comment
         env:
@@ -215,7 +232,6 @@ jobs:
             subscription/src/test/java/
             subscription/build/reports/tests/test/
             subscription/build/test-results/test/
-
   ui-test:
     needs: create-pr
     runs-on: ubuntu-latest
