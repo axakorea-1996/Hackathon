@@ -128,41 +128,91 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: python3 .github/scripts/create_pr.py
 
-      - name: Trigger Webhook via SSH
+      - name: Trigger Webhook
         if: steps.create_pr.outputs.pr_number != ''
-        uses: appleboy/ssh-action@v1.0.3
+        env:
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REPO: ${{ github.repository }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          pip install paramiko -q
+          python3 .github/scripts/trigger_webhook.py
+
+  junit-test-gen:
+    needs: create-pr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          request_pty: true
-          script: |
-            PR_NUMBER=${{ steps.create_pr.outputs.pr_number }}
-            REPO="${{ github.repository }}"
-            TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
+          fetch-depth: 2
 
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost/webhook/github \
-              -H "Content-Type: application/json" \
-              -H "X-GitHub-Event: pull_request" \
-              -d "{
-                \"action\": \"opened\",
-                \"pull_request\": {
-                  \"number\": $PR_NUMBER,
-                  \"title\": \"$TITLE\"
-                },
-                \"repository\": {
-                  \"full_name\": \"$REPO\"
-                }
-              }")
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            echo "webhook 응답 코드: $HTTP_CODE"
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ webhook 호출 성공"
-            else
-              echo "❌ webhook 호출 실패: $HTTP_CODE"
-            fi
+      - name: Install Python dependencies
+        run: pip install openai requests
+
+      - name: Extract changed Java files
+        working-directory: subscription
+        run: |
+          python ../.github/scripts/testgen/extract_diff.py \
+            --base-ref HEAD~1 \
+            --head-ref HEAD \
+            --output ../outputs/changed_files.json
+
+      - name: Extract changed methods
+        working-directory: subscription
+        run: |
+          python ../.github/scripts/testgen/extract_changed_methods.py \
+            --changed-files-json ../outputs/changed_files.json \
+            --output ../outputs/changed_methods.json
+
+      - name: Generate JUnit tests
+        working-directory: subscription
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_BASE_URL: https://openrouter.ai/api/v1
+          OPENAI_MODEL: openai/gpt-4.1-mini
+        run: |
+          python ../.github/scripts/testgen/generate_junit_tests.py \
+            --changed-methods-json ../outputs/changed_methods.json \
+            --output-dir src/test/java
+
+      - name: Run Gradle tests
+        working-directory: subscription
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test | tee ../outputs/gradle_test.log || true
+
+      - name: Post PR Comment
+        env:
+          AXA_GITHUB_TOKEN: ${{ secrets.AXA_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/testgen/post_junit_result.py
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-testgen-artifacts
+          path: |
+            outputs/
+            subscription/src/test/java/
+            subscription/build/reports/tests/test/
+            subscription/build/test-results/test/
 
   ui-test:
     needs: create-pr
