@@ -194,7 +194,10 @@ jobs:
         working-directory: subscription
         run: |
           chmod +x ./gradlew
-          ./gradlew test | tee ../outputs/gradle_test.log || true
+          ./gradlew test \
+            --no-daemon \
+            -Dorg.gradle.java.installations.auto-detect=false \
+            | tee ../outputs/gradle_test.log || true
 
       - name: Post PR Comment
         env:
