@@ -8,23 +8,12 @@ pr_number = os.environ['PR_NUMBER']
 repo      = os.environ['REPO']
 msg       = os.environ['COMMIT_MESSAGE'].replace("'", "").replace('"', '')
 
-print(f"EC2_HOST: {ec2_host}")
-print(f"EC2_USER: {ec2_user}")
-print(f"PR_NUMBER: {pr_number}")
-
 # SSH 키 임시 저장
 with open('/tmp/ec2_key.pem', 'w') as f:
     f.write(ec2_key)
-    # 키 끝에 개행 확인
     if not ec2_key.endswith('\n'):
         f.write('\n')
 os.chmod('/tmp/ec2_key.pem', 0o600)
-
-# SSH 키 내용 확인 (첫줄/마지막줄만)
-lines = ec2_key.strip().split('\n')
-print(f"SSH 키 첫줄: {lines[0]}")
-print(f"SSH 키 마지막줄: {lines[-1]}")
-print(f"SSH 키 라인 수: {len(lines)}")
 
 try:
     client = paramiko.SSHClient()
@@ -38,8 +27,9 @@ try:
     )
     print("SSH 접속 성공!")
 
+    # localhost → 172.17.0.1 (Docker host gateway) 로 변경
     cmd = (
-        f'curl -s -w "\\n%{{http_code}}" -X POST http://localhost/webhook/github '
+        f'curl -s -w "\\n%{{http_code}}" -X POST http://172.17.0.1/webhook/github '
         f'-H "Content-Type: application/json" '
         f'-H "X-GitHub-Event: pull_request" '
         f'-d \'{{"action":"opened",'
@@ -47,17 +37,14 @@ try:
         f'"repository":{{"full_name":"{repo}"}}}}\''
     )
 
-    print(f"실행 명령어: {cmd}")
+    print(f"webhook 호출 중... PR #{pr_number}")
     stdin, stdout, stderr = client.exec_command(cmd, timeout=30)
-    output = stdout.read().decode()
-    error  = stderr.read().decode()
+    output    = stdout.read().decode()
+    error     = stderr.read().decode()
     exit_code = stdout.channel.recv_exit_status()
 
     print(f"exit_code: {exit_code}")
-    print(f"stdout: '{output}'")
-    print(f"stderr: '{error}'")
-
-    lines  = output.strip().split('\n')
+    lines     = output.strip().split('\n')
     http_code = lines[-1] if lines else '000'
 
     print(f"webhook 응답 코드: {http_code}")
@@ -65,6 +52,8 @@ try:
         print("✅ webhook 호출 성공")
     else:
         print(f"❌ webhook 호출 실패: {http_code}")
+        if error:
+            print(f"에러: {error}")
 
     client.close()
 
