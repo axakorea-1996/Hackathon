@@ -1,4 +1,5 @@
 import os
+import time
 import paramiko
 
 ec2_host  = os.environ['EC2_HOST']
@@ -27,7 +28,6 @@ try:
     )
     print("SSH 접속 성공!")
 
-    # localhost → 172.17.0.1 (Docker host gateway) 로 변경
     cmd = (
         f'curl -s -w "\\n%{{http_code}}" -X POST http://172.17.0.1/webhook/github '
         f'-H "Content-Type: application/json" '
@@ -37,23 +37,35 @@ try:
         f'"repository":{{"full_name":"{repo}"}}}}\''
     )
 
-    print(f"webhook 호출 중... PR #{pr_number}")
-    stdin, stdout, stderr = client.exec_command(cmd, timeout=30)
-    output    = stdout.read().decode()
-    error     = stderr.read().decode()
-    exit_code = stdout.channel.recv_exit_status()
+    # ── 재시도 로직 추가 ──────────────────────────
+    max_retries = 5
+    retry_interval = 10  # 초
 
-    print(f"exit_code: {exit_code}")
-    lines     = output.strip().split('\n')
-    http_code = lines[-1] if lines else '000'
+    for attempt in range(1, max_retries + 1):
+        print(f"webhook 호출 시도 {attempt}/{max_retries} PR #{pr_number}")
 
-    print(f"webhook 응답 코드: {http_code}")
-    if http_code == '200':
-        print("✅ webhook 호출 성공")
-    else:
-        print(f"❌ webhook 호출 실패: {http_code}")
-        if error:
-            print(f"에러: {error}")
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=30)
+        output    = stdout.read().decode()
+        error     = stderr.read().decode()
+        exit_code = stdout.channel.recv_exit_status()
+
+        lines     = output.strip().split('\n')
+        http_code = lines[-1] if lines else '000'
+
+        print(f"exit_code: {exit_code}, webhook 응답 코드: {http_code}")
+
+        if http_code == '200':
+            print("✅ webhook 호출 성공")
+            break
+        else:
+            print(f"❌ webhook 호출 실패: {http_code}")
+            if error:
+                print(f"에러: {error}")
+            if attempt < max_retries:
+                print(f"{retry_interval}초 후 재시도...")
+                time.sleep(retry_interval)
+            else:
+                print("❌ 최대 재시도 횟수 초과")
 
     client.close()
 
