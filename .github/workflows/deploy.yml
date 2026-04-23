@@ -128,41 +128,18 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: python3 .github/scripts/create_pr.py
 
-      - name: Trigger Webhook via SSH
+      - name: Trigger Webhook
         if: steps.create_pr.outputs.pr_number != ''
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          request_pty: true
-          script: |
-            PR_NUMBER=${{ steps.create_pr.outputs.pr_number }}
-            REPO="${{ github.repository }}"
-            TITLE=$(echo '${{ github.event.head_commit.message }}' | head -1)
-
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost/webhook/github \
-              -H "Content-Type: application/json" \
-              -H "X-GitHub-Event: pull_request" \
-              -d "{
-                \"action\": \"opened\",
-                \"pull_request\": {
-                  \"number\": $PR_NUMBER,
-                  \"title\": \"$TITLE\"
-                },
-                \"repository\": {
-                  \"full_name\": \"$REPO\"
-                }
-              }")
-
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            echo "webhook 응답 코드: $HTTP_CODE"
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ webhook 호출 성공"
-            else
-              echo "❌ webhook 호출 실패: $HTTP_CODE"
-            fi
+        env:
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REPO: ${{ github.repository }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          pip install paramiko -q
+          python3 .github/scripts/trigger_webhook.py
 
   ui-test:
     needs: create-pr
