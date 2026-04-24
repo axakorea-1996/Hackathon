@@ -89,8 +89,8 @@ public class SubscriptionService {
     // ── API 3. 차량 신규 등록 ────────────────────────────
     public String registerVehicle(String phone, String plateNumber, String modelName) {
 
-        if (plateNumber == null) {
-            throw new IllegalArgumentException("차량번호는 필수입니다");
+        if (plateNumber == null || plateNumber.isBlank()) {
+        throw new IllegalArgumentException("차량번호는 필수입니다");
         }
 
         Customer customer = customerRepo.findByPhone(phone)
@@ -103,5 +103,5 @@ public class SubscriptionService {
                 .build());
 
         return vehicle.getPlateNumber() + " 등록 완료";
-    }
+}
 }
