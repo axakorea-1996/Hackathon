@@ -69,7 +69,6 @@ public class SubscriptionService {
                 .specialChild(Boolean.TRUE.equals(req.getSpecialChild()))
                 .build());
 
-        log.info("청약 저장 완료: {}", policyNo);
 
         return SubscriptionResponseDto.from(subscription);
     }
