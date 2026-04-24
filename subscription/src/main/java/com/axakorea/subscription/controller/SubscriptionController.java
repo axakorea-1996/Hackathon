@@ -30,7 +30,7 @@ public class SubscriptionController {
     public ResponseEntity<ApiResponse<SubscriptionResponseDto>> create(
             @RequestBody @Valid SubscriptionRequestDto request) {
 
-
+        SubscriptionResponseDto response = subscriptionService.create(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(response));
