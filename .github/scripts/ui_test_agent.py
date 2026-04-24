@@ -1,3 +1,9 @@
+import sys
+print(f"Python: {sys.version}")
+print(f"시작!")
+
+import asyncio, os, sys, json, traceback, re
+
 async def run(test_cases: list):
     results = {"passed": [], "failed": []}
 
