@@ -25,7 +25,7 @@ public class SubscriptionService {
     private final VehicleRepository      vehicleRepo;
     private final SubscriptionRepository subRepo;
 
-    // ── API 1. 청약 저장 ─────────────────────────────
+    // ── API 1. 청약 저장!!! ─────────────────────────────
     public SubscriptionResponseDto create(SubscriptionRequestDto req) {
 
         // 1) 고객 조회 or 신규 생성 (전화번호 기준)
