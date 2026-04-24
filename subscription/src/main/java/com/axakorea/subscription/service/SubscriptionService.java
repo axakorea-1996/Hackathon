@@ -69,6 +69,7 @@ public class SubscriptionService {
                 .specialChild(Boolean.TRUE.equals(req.getSpecialChild()))
                 .build());
 
+        log.info("청약 저장 완료: {}", policyNo);
 
         return SubscriptionResponseDto.from(subscription);
     }
@@ -83,5 +84,24 @@ public class SubscriptionService {
                 .stream()
                 .map(SubscriptionResponseDto::from)
                 .toList();
+    }
+
+    // ── API 3. 차량 신규 등록 ────────────────────────────
+    public String registerVehicle(String phone, String plateNumber, String modelName) {
+
+        if (plateNumber == null) {
+            throw new IllegalArgumentException("차량번호는 필수입니다");
+        }
+
+        Customer customer = customerRepo.findByPhone(phone)
+                .orElseThrow(() -> new NotFoundException("고객을 찾을 수 없습니다: " + phone));
+
+        Vehicle vehicle = vehicleRepo.save(Vehicle.builder()
+                .customer(customer)
+                .plateNumber(plateNumber)
+                .modelName(modelName)
+                .build());
+
+        return vehicle.getPlateNumber() + " 등록 완료";
     }
 }
