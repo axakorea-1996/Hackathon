@@ -10,9 +10,9 @@ from pathlib import Path
 
 @dataclass
 class ChangedFile:
-    file_path: str
+    file_path:           str
     changed_line_ranges: list[tuple[int, int]]
-    raw_hunk_headers: list[str]
+    raw_hunk_headers:    list[str]
 
 
 def run_git_command(args: list[str], repo_root: Path | None = None) -> str:
@@ -43,24 +43,14 @@ def get_repo_root() -> Path:
 
 
 def is_target_java_file(relative_path: str) -> bool:
-    """
-    Only include Java source files under src/main.
-    Exclude:
-    - src/test/java
-    - generated tests
-    - non-java files
-    """
     normalized = relative_path.replace("\\", "/")
 
     if not normalized.endswith(".java"):
         return False
-
     if "/src/main/" not in normalized:
         return False
-
     if "/src/test/" in normalized:
         return False
-
     if normalized.endswith("GeneratedTest.java"):
         return False
 
@@ -72,7 +62,7 @@ def get_changed_java_files(base_ref: str, head_ref: str, repo_root: Path) -> lis
     print("=== RAW git diff --name-only ===")
     print(output if output.strip() else "(empty)")
 
-    files = [line.strip() for line in output.splitlines() if line.strip()]
+    files      = [line.strip() for line in output.splitlines() if line.strip()]
     java_files: list[str] = []
 
     for f in files:
@@ -108,17 +98,20 @@ def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 def get_changed_line_ranges(
     file_path: str,
-    base_ref: str,
-    head_ref: str,
+    base_ref:  str,
+    head_ref:  str,
     repo_root: Path,
 ) -> tuple[list[tuple[int, int]], list[str]]:
-    diff_text = run_git_command(["diff", "-U0", base_ref, head_ref, "--", file_path], repo_root=repo_root)
+    diff_text = run_git_command(
+        ["diff", "-U0", base_ref, head_ref, "--", file_path],
+        repo_root=repo_root
+    )
 
     print(f"\n=== RAW DIFF FOR: {file_path} ===")
     print(diff_text if diff_text.strip() else "(empty)")
 
-    changed_ranges: list[tuple[int, int]] = []
-    raw_hunk_headers: list[str] = []
+    changed_ranges:   list[tuple[int, int]] = []
+    raw_hunk_headers: list[str]             = []
 
     for line in diff_text.splitlines():
         if not line.startswith("@@"):
@@ -127,37 +120,49 @@ def get_changed_line_ranges(
         raw_hunk_headers.append(line)
         print(f"[HUNK] {line}")
 
-        # Examples:
-        # @@ -40,2 +40,4 @@
-        # @@ -57 +57 @@
-        match = re.match(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@", line)
+        # @@ -삭제시작[,삭제수] +추가시작[,추가수] @@
+        match = re.match(
+            r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@",
+            line
+        )
         if not match:
             print(f"[WARN] Failed to parse hunk header: {line}")
             continue
 
-        start_line = int(match.group(1))
-        count = int(match.group(2) or "1")
+        del_start = int(match.group(1))
+        del_count = int(match.group(2)) if match.group(2) is not None else 1
+        add_start = int(match.group(3))
+        add_count = int(match.group(4)) if match.group(4) is not None else 1
 
-        if count == 0:
-            print(f"[INFO] count=0 for hunk, skipping: {line}")
-            continue
+        # ✅ 추가된 라인이 있는 경우
+        if add_count > 0:
+            end_line = add_start + add_count - 1
+            changed_ranges.append((add_start, end_line))
+            print(f"[RANGES] 추가 라인: {add_start}-{end_line}")
 
-        end_line = start_line + count - 1
-        changed_ranges.append((start_line, end_line))
+        # ✅ 삭제만 있는 경우 (add_count=0)
+        # 삭제된 라인 위치도 메서드 감지에 사용
+        elif del_count > 0:
+            end_line = del_start + del_count - 1
+            changed_ranges.append((del_start, end_line))
+            print(f"[RANGES] 삭제 전용 hunk, 삭제 라인 범위 사용: {del_start}-{end_line}")
+
+        else:
+            print(f"[INFO] 추가/삭제 모두 0, skipping: {line}")
 
     merged = merge_ranges(changed_ranges)
-
-    print(f"[RANGES] {merged if merged else '(empty)'}")
+    print(f"[RANGES] 최종: {merged if merged else '(empty)'}")
     return merged, raw_hunk_headers
 
 
 def collect_changed_files(base_ref: str, head_ref: str, repo_root: Path) -> list[ChangedFile]:
     java_files = get_changed_java_files(base_ref, head_ref, repo_root)
-    changed: list[ChangedFile] = []
+    changed:    list[ChangedFile] = []
 
     for file_path in java_files:
-        ranges, hunk_headers = get_changed_line_ranges(file_path, base_ref, head_ref, repo_root)
-
+        ranges, hunk_headers = get_changed_line_ranges(
+            file_path, base_ref, head_ref, repo_root
+        )
         changed.append(
             ChangedFile(
                 file_path=file_path,
@@ -170,9 +175,19 @@ def collect_changed_files(base_ref: str, head_ref: str, repo_root: Path) -> list
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Extract changed Java files and changed line ranges.")
-    parser.add_argument("--base-ref", default="HEAD~1", help="Base git ref to compare from.")
-    parser.add_argument("--head-ref", default="HEAD", help="Head git ref to compare to.")
+    parser = argparse.ArgumentParser(
+        description="Extract changed Java files and changed line ranges."
+    )
+    parser.add_argument(
+        "--base-ref",
+        default="HEAD~1",
+        help="Base git ref to compare from."
+    )
+    parser.add_argument(
+        "--head-ref",
+        default="HEAD",
+        help="Head git ref to compare to."
+    )
     parser.add_argument(
         "--output",
         default="outputs/changed_files.json",
@@ -189,9 +204,9 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
-        "repo_root": str(repo_root),
-        "base_ref": args.base_ref,
-        "head_ref": args.head_ref,
+        "repo_root":     str(repo_root),
+        "base_ref":      args.base_ref,
+        "head_ref":      args.head_ref,
         "changed_files": [asdict(item) for item in changed_files],
     }
 
