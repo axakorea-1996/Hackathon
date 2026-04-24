@@ -2,10 +2,12 @@ package com.axakorea.subscription.client;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,32 +24,43 @@ public class OpenRouterClient {
     @Value("${openrouter.api.model}")
     private String model;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    // ⚠️ 보안 추가: 타임아웃 설정
+    private final RestTemplate restTemplate;
+
+    public OpenRouterClient(RestTemplateBuilder builder) {
+        this.restTemplate = builder
+                .connectTimeout(Duration.ofSeconds(10))
+                .readTimeout(Duration.ofSeconds(60))
+                .build();
+    }
 
     public String analyze(String systemPrompt, String userPrompt) {
-
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + apiKey);
-        headers.set("HTTP-Referer", "https://axakorea.com");  // OpenRouter 필수값
+        // ⚠️ 보안 추가: API 키 trim
+        headers.set("Authorization", "Bearer " + apiKey.trim());
+        headers.set("HTTP-Referer", "https://axakorea.com");
         headers.set("X-Title", "AXA Impact Analysis Agent");
 
+        // ⚠️ 보안 추가: 프롬프트 길이 제한
+        String truncatedSystem = truncate(systemPrompt, 10000);
+        String truncatedUser   = truncate(userPrompt, 50000);
+
         Map<String, Object> body = Map.of(
-                "model", model,
+                "model",    model,
                 "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user",   "content", userPrompt)
+                        Map.of("role", "system", "content", truncatedSystem),
+                        Map.of("role", "user",   "content", truncatedUser)
                 ),
                 "max_tokens", 3000,
-                "temperature", 0.1   // 일관된 분석 결과를 위해 낮게 설정
+                "temperature", 0.1
         );
 
         try {
             ResponseEntity<Map> response = restTemplate.postForEntity(
                     apiUrl,
                     new HttpEntity<>(body, headers),
-                    Map.class
-            );
+                    Map.class);
 
             List<Map> choices = (List<Map>) response.getBody().get("choices");
             Map message = (Map) choices.get(0).get("message");
@@ -57,8 +70,16 @@ public class OpenRouterClient {
             return result;
 
         } catch (Exception e) {
-            log.error("OpenRouter API 호출 실패", e);
-            return "❌ AI 분석 중 오류가 발생했습니다: " + e.getMessage();
+            // ⚠️ 보안 추가: API 키 로그 노출 방지
+            log.error("OpenRouter API 호출 실패: {}", e.getMessage());
+            return "❌ AI 분석 중 오류가 발생했습니다.";
         }
+    }
+
+    private String truncate(String text, int maxLength) {
+        if (text == null) return "";
+        return text.length() > maxLength
+                ? text.substring(0, maxLength) + "...(truncated)"
+                : text;
     }
 }
