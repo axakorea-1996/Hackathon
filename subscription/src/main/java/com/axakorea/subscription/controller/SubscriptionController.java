@@ -34,6 +34,7 @@ public class SubscriptionController {
 
         SubscriptionResponseDto response = subscriptionService.create(request);
         // ⚠️ 보안 추가: 개인정보 로그 제외
+        log.info("계약저장완료");
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(response));
