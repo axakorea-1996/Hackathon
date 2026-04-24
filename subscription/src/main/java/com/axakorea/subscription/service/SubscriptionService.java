@@ -10,12 +10,14 @@ import com.axakorea.subscription.repository.CustomerRepository;
 import com.axakorea.subscription.repository.SubscriptionRepository;
 import com.axakorea.subscription.repository.VehicleRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -66,6 +68,8 @@ public class SubscriptionService {
                 .specialBlackbox(Boolean.TRUE.equals(req.getSpecialBlackbox()))
                 .specialChild(Boolean.TRUE.equals(req.getSpecialChild()))
                 .build());
+
+        log.info("청약 저장 완료: {}", policyNo);
 
         return SubscriptionResponseDto.from(subscription);
     }
