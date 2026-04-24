@@ -165,6 +165,26 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # ✅ Python 의존성 캐싱 추가
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-openai-requests
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ✅ Gradle 캐싱 추가
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Install Python dependencies
         run: pip install openai requests
 
@@ -211,7 +231,11 @@ jobs:
         working-directory: subscription
         run: |
           chmod +x ./gradlew
-          ./gradlew test | tee ../outputs/gradle_test.log || true
+          # ✅ 병렬 실행 + 빌드 캐시 활용
+          ./gradlew test \
+            --parallel \
+            --build-cache \
+            | tee ../outputs/gradle_test.log || true
 
       - name: Show test results
         if: always()
@@ -248,6 +272,17 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
+      # ✅ Python + Playwright 캐싱 추가
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install dependencies
         run: |
