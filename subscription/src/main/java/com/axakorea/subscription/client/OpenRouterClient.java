@@ -2,12 +2,11 @@ package com.axakorea.subscription.client;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -24,25 +23,24 @@ public class OpenRouterClient {
     @Value("${openrouter.api.model}")
     private String model;
 
-    // ⚠️ 보안 추가: 타임아웃 설정
+    // ✅ RestTemplateBuilder 대신 SimpleClientHttpRequestFactory로 타임아웃 설정
     private final RestTemplate restTemplate;
 
-    public OpenRouterClient(RestTemplateBuilder builder) {
-        this.restTemplate = builder
-                .connectTimeout(Duration.ofSeconds(10))
-                .readTimeout(Duration.ofSeconds(60))
-                .build();
+    public OpenRouterClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);  // 10초
+        factory.setReadTimeout(60000);     // 60초
+        this.restTemplate = new RestTemplate(factory);
     }
 
     public String analyze(String systemPrompt, String userPrompt) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        // ⚠️ 보안 추가: API 키 trim
         headers.set("Authorization", "Bearer " + apiKey.trim());
         headers.set("HTTP-Referer", "https://axakorea.com");
         headers.set("X-Title", "AXA Impact Analysis Agent");
 
-        // ⚠️ 보안 추가: 프롬프트 길이 제한
+        // 프롬프트 길이 제한
         String truncatedSystem = truncate(systemPrompt, 10000);
         String truncatedUser   = truncate(userPrompt, 50000);
 
@@ -70,7 +68,7 @@ public class OpenRouterClient {
             return result;
 
         } catch (Exception e) {
-            // ⚠️ 보안 추가: API 키 로그 노출 방지
+            // API 키 로그 노출 방지
             log.error("OpenRouter API 호출 실패: {}", e.getMessage());
             return "❌ AI 분석 중 오류가 발생했습니다.";
         }

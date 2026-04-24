@@ -1,7 +1,6 @@
 package com.axakorea.subscription.webhook;
 
 import com.axakorea.subscription.agent.AgentOrchestrator;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +22,6 @@ public class GitHubWebhookController {
 
     private final AgentOrchestrator agentOrchestrator;
 
-    // ⚠️ 보안 추가: webhook secret 설정
     @Value("${github.webhook.secret:}")
     private String webhookSecret;
 
@@ -31,17 +29,25 @@ public class GitHubWebhookController {
     public ResponseEntity<String> handleGitHubEvent(
             @RequestHeader("X-GitHub-Event") String eventType,
             @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
-            @RequestBody String rawBody,
-            @RequestBody Map<String, Object> payload) {
+            @RequestBody String rawBody) {
 
-        // ⚠️ 보안 추가: webhook 서명 검증
+        // webhook 서명 검증
         if (!webhookSecret.isBlank() && !verifySignature(rawBody, signature)) {
             log.warn("webhook 서명 검증 실패 - 비인가 요청 차단");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
         }
 
-        log.info("GitHub 이벤트 수신: {} - {}", eventType,
-                payload.get("action"));
+        // JSON 파싱
+        Map<String, Object> payload;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            payload = mapper.readValue(rawBody, Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Invalid JSON");
+        }
+
+        log.info("GitHub 이벤트 수신: {} - {}", eventType, payload.get("action"));
 
         if ("pull_request".equals(eventType)) {
             String action = (String) payload.get("action");
@@ -50,24 +56,28 @@ public class GitHubWebhookController {
                 Map<String, Object> pr   = (Map<String, Object>) payload.get("pull_request");
                 Map<String, Object> repo = (Map<String, Object>) payload.get("repository");
 
+                if (pr == null || repo == null) {
+                    return ResponseEntity.badRequest().body("Invalid payload");
+                }
+
                 int    prNumber = (int) pr.get("number");
                 String prTitle  = (String) pr.get("title");
                 String repoName = (String) repo.get("full_name");
 
-                // 입력값 검증
                 if (repoName == null || prTitle == null) {
                     return ResponseEntity.badRequest().body("Invalid payload");
                 }
 
                 log.info("PR 감지: {} #{} - {}", repoName, prNumber, prTitle);
-                agentOrchestrator.orchestrate(repoName, prNumber, prTitle);
+
+                // ✅ 기존 메서드명 유지 (analyzeAndComment 방식 그대로)
+                agentOrchestrator.orchestrateAsync(repoName, prNumber, prTitle);
             }
         }
 
         return ResponseEntity.ok("OK");
     }
 
-    // ⚠️ 보안 추가: HMAC-SHA256 서명 검증
     private boolean verifySignature(String payload, String signature) {
         if (signature == null || !signature.startsWith("sha256=")) {
             return false;
@@ -79,8 +89,6 @@ public class GitHubWebhookController {
             byte[] hash = mac.doFinal(
                     payload.getBytes(StandardCharsets.UTF_8));
             String expected = "sha256=" + HexFormat.of().formatHex(hash);
-
-            // timing-safe 비교
             return timingSafeEquals(expected, signature);
         } catch (Exception e) {
             log.error("서명 검증 오류", e);
@@ -88,7 +96,6 @@ public class GitHubWebhookController {
         }
     }
 
-    // timing attack 방지
     private boolean timingSafeEquals(String a, String b) {
         if (a.length() != b.length()) return false;
         int result = 0;
