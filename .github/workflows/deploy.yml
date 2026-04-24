@@ -165,7 +165,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ✅ Python 의존성 캐싱 추가
       - name: Cache Python dependencies
         uses: actions/cache@v4
         with:
@@ -174,7 +173,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # ✅ Gradle 캐싱 추가
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -231,7 +229,6 @@ jobs:
         working-directory: subscription
         run: |
           chmod +x ./gradlew
-          # ✅ 병렬 실행 + 빌드 캐시 활용
           ./gradlew test \
             --parallel \
             --build-cache \
@@ -273,14 +270,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ✅ Python + Playwright 캐싱 추가
       - name: Cache Python dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
             ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-playwright-v3
           restore-keys: |
             ${{ runner.os }}-playwright-
 
