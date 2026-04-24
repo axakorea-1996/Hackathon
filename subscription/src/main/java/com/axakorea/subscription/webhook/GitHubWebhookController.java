@@ -71,7 +71,7 @@ public class GitHubWebhookController {
                 log.info("PR 감지: {} #{} - {}", repoName, prNumber, prTitle);
 
                 // ✅ 기존 메서드명 유지 (analyzeAndComment 방식 그대로)
-                agentOrchestrator.orchestrateAsync(repoName, prNumber, prTitle);
+                agentOrchestrator.runSequentially(repoName, prNumber, prTitle);
             }
         }
 
