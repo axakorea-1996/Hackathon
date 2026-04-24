@@ -1,4 +1,3 @@
-# .github/scripts/testgen/post_junit_result.py
 import json
 import os
 import xml.etree.ElementTree as ET
@@ -10,38 +9,52 @@ PR_NUMBER = os.environ.get("PR_NUMBER", "")
 REPO      = os.environ.get("REPO", "")
 
 def parse_junit_xml(xml_dir: str) -> dict:
-    """Gradle 테스트 결과 XML 파싱"""
     results = {"passed": 0, "failed": 0, "errors": 0, "failures": []}
     xml_path = Path(xml_dir)
 
     if not xml_path.exists():
+        print(f"XML 디렉토리 없음: {xml_dir}")
         return results
 
-    for xml_file in xml_path.glob("*GeneratedTest*.xml"):
+    xml_files = list(xml_path.glob("*GeneratedTest*.xml"))
+    print(f"XML 파일 수: {len(xml_files)}")
+
+    for xml_file in xml_files:
         try:
+            print(f"파싱 중: {xml_file}")
             tree = ET.parse(xml_file)
             root = tree.getroot()
-            results["passed"] += int(root.get("tests", 0)) - \
-                                  int(root.get("failures", 0)) - \
-                                  int(root.get("errors", 0))
-            results["failed"] += int(root.get("failures", 0))
-            results["errors"] += int(root.get("errors", 0))
 
-            for failure in root.iter("failure"):
-                test_case = failure.getparent() if hasattr(failure, 'getparent') else None
-                results["failures"].append({
-                    "test": root.get("name", ""),
-                    "message": failure.get("message", "")[:200]
-                })
+            tests    = int(root.get("tests",    0))
+            failures = int(root.get("failures", 0))
+            errors   = int(root.get("errors",   0))
+
+            results["passed"] += tests - failures - errors
+            results["failed"] += failures
+            results["errors"] += errors
+
+            # ⚠️ getparent() 미지원 → testcase 직접 순회로 수정
+            for testcase in root.iter("testcase"):
+                for failure in testcase.findall("failure"):
+                    results["failures"].append({
+                        "test":    testcase.get("name", ""),
+                        "message": failure.get("message", "")[:200]
+                    })
+                for error in testcase.findall("error"):
+                    results["failures"].append({
+                        "test":    testcase.get("name", ""),
+                        "message": error.get("message", "")[:200]
+                    })
+
         except Exception as e:
             print(f"XML 파싱 오류: {e}")
 
     return results
 
 def load_summary() -> dict:
-    """생성된 테스트 요약 로드"""
     summary_path = Path("outputs/generated_direct_junit_summary.json")
     if not summary_path.exists():
+        print(f"summary 파일 없음: {summary_path}")
         return {}
     return json.loads(summary_path.read_text())
 
@@ -49,16 +62,21 @@ def format_comment(results: dict, summary: dict) -> str:
     total   = results["passed"] + results["failed"] + results["errors"]
     passed  = results["passed"]
     failed  = results["failed"] + results["errors"]
-    status  = "✅ 모든 JUnit 테스트 통과" if failed == 0 else "❌ 실패 항목 있음"
 
-    # 생성된 테스트 목록
+    # ⚠️ total=0이면 테스트 미실행으로 별도 표시
+    if total == 0:
+        status = "⚠️ 테스트 실행 결과 없음"
+    elif failed == 0:
+        status = "✅ 모든 JUnit 테스트 통과"
+    else:
+        status = "❌ 실패 항목 있음"
+
     generated = summary.get("generated_tests", [])
     test_list = "\n".join(
         f"- `{t['source_file'].split('/')[-1]}` → `{t['generated_test_file'].split('/')[-1]}`"
         for t in generated
     )
 
-    # 실패 상세
     failed_section = ""
     if results["failures"]:
         failed_detail = "\n".join(
@@ -102,10 +120,8 @@ def post_pr_comment(comment: str):
     print(f"PR 코멘트 등록: {response.status_code}")
 
 if __name__ == "__main__":
-    results = parse_junit_xml(
-        "subscription/build/test-results/test"
-    )
-    summary  = load_summary()
-    comment  = format_comment(results, summary)
+    results = parse_junit_xml("subscription/build/test-results/test")
+    summary = load_summary()
+    comment = format_comment(results, summary)
     print(comment)
     post_pr_comment(comment)
