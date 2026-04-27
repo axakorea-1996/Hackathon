@@ -230,6 +230,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew test \
+            --tests "*GeneratedTest*" \
             --parallel \
             --build-cache \
             | tee ../outputs/gradle_test.log || true
