@@ -88,19 +88,26 @@ public class CodeReviewAgent {
 
     private String buildUserPrompt(String prTitle, String diff) {
         return """
-                ## PR 제목: %s
-                
-                ## 변경된 코드 (diff)
-                %s
-                
-                위 코드를 아래 형식으로 리뷰해주세요:
-                
-                1. 🔴 즉시 수정 필요 (컨벤션 위반, 보안 취약점)
-                2. 🟡 개선 권고 (클린 코드, 베스트 프랙티스)
-                3. 🟢 잘 작성된 부분
-                4. 📝 총평 (전체적인 코드 품질 점수: X / 10)
-                5. 💡 수정 예시 코드 (필요한 경우)
-                """.formatted(prTitle, diff);
+            ## PR 제목: %s
+
+            ## 변경된 코드 (diff)
+            %s
+
+            위 코드를 아래 형식으로 리뷰해주세요.
+            제목 없이 바로 항목부터 시작하세요:
+
+            1. 🔴 즉시 수정 필요 (컨벤션 위반, 보안 취약점)
+            (내용)
+
+            2. 🟡 개선 권고 (클린 코드, 베스트 프랙티스)
+            (내용)
+
+            3. 📝 총평 (전체적인 코드 품질 점수: X / 10)
+            (내용)
+
+            4. 💡 수정 예시 코드 (필요한 경우)
+            (내용)
+            """.formatted(prTitle, diff);
     }
 
     private String buildDiffSummary(List<ChangedFile> files) {
