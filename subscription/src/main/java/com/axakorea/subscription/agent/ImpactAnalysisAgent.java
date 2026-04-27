@@ -97,53 +97,57 @@ public class ImpactAnalysisAgent {
     // ── 영향도 분석 프롬프트 ─────────────────────────
     private String buildSystemPrompt() {
         return """
-                당신은 Spring Boot MVC 프로젝트 전문 시니어 아키텍처 리뷰어입니다.
+            당신은 Spring Boot MVC 프로젝트 전문 시니어 아키텍처 리뷰어입니다.
 
-                역할:
-                - 새로 추가/변경된 코드가 기존 코드에 미치는 영향을 분석합니다
-                - 장애 발생 가능성을 사전에 탐지합니다
-                - MVC 패턴(Controller → Service → Repository → Domain)의 계층 구조를 기반으로 분석합니다
+            역할:
+            - 새로 추가/변경된 코드가 기존 코드에 미치는 영향을 분석합니다
+            - 장애 발생 가능성을 사전에 탐지합니다
+            - MVC 패턴(Controller → Service → Repository → Domain)의 계층 구조를 기반으로 분석합니다
 
-                분석 기준:
-                1. 트랜잭션 정합성 (데이터 불일치 가능성)
-                2. Breaking Change (기존 API 응답 형식 변경)
-                3. N+1 쿼리 문제 (성능 장애)
-                4. NullPointerException 위험
-                5. 순환 의존성 (Circular Dependency)
-                6. DB 스키마 변경으로 인한 기존 데이터 영향
+            분석 기준:
+            1. 트랜잭션 정합성 (데이터 불일치 가능성)
+            2. Breaking Change (기존 API 응답 형식 변경)
+            3. N+1 쿼리 문제 (성능 장애)
+            4. NullPointerException 위험
+            5. 순환 의존성 (Circular Dependency)
+            6. DB 스키마 변경으로 인한 기존 데이터 영향
 
-                응답은 반드시 한국어 Markdown 형식으로 작성하세요.
-                """;
+            응답은 반드시 한국어 Markdown 형식으로 작성하세요.
+            응답 시작 부분에 제목(PR 영향도 분석, PR 분석 결과 등)을 포함하지 마세요.
+            """;
     }
 
     private String buildUserPrompt(String prTitle, String diff,
                                    String existingCode, String depTree) {
-        // ✅ 사용자 입력값 sanitize
         String safeTitle        = sanitizeForPrompt(prTitle,       500);
         String safeDiff         = sanitizeForPrompt(diff,          50000);
         String safeExistingCode = sanitizeForPrompt(existingCode,  30000);
         String safeDepTree      = sanitizeForPrompt(depTree,       5000);
 
         return """
-                ## PR 제목: %s
+            ## PR 제목: %s
 
-                ## 의존성 트리
-                %s
+            ## 의존성 트리
+            %s
 
-                ## 변경된 코드 (diff)
-                %s
+            ## 변경된 코드 (diff)
+            %s
 
-                ## 기존 연관 코드
-                %s
+            ## 기존 연관 코드
+            %s
 
-                위 변경사항을 기존 코드와 비교하여 아래 형식으로 영향도를 분석해주세요:
+            위 변경사항을 기존 코드와 비교하여 아래 형식으로만 응답하세요.
+            제목 없이 바로 항목부터 시작하세요:
 
-                1. 🔴 장애 위험 항목 (즉시 수정 필요)
-                2. 🟡 영향 범위 (주의 필요한 기존 파일 목록)
-                3. 🟢 안전 확인 항목
-                4. 📋 최종 판정 (merge 가능 여부)
-                5. 💡 수정 권고 코드 (있을 경우)
-                """.formatted(safeTitle, safeDepTree, safeDiff, safeExistingCode);
+            1. 🔴 장애 위험 항목 (즉시 수정 필요)
+            (내용)
+
+            2. 🟡 영향 범위 (주의 필요한 기존 파일 목록)
+            (내용)
+
+            3. 🟢 안전 확인 항목
+            (내용)
+            """.formatted(safeTitle, safeDepTree, safeDiff, safeExistingCode);
     }
 
     // ── 다이어그램 생성 프롬프트 ─────────────────────
