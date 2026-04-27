@@ -51,4 +51,10 @@ public class SubscriptionController {
 
         return ResponseEntity.ok(ApiResponse.ok(subscriptionService.getMyList(phone)));
     }
+
+    @GetMapping("/myListSubscription")
+    @Operation(summary = "내 청약 목록 조회")
+    public ResponseEntity<ApiResponse<List<SubscriptionResponseDto>>> myListSubscription(@RequestParam String phone) {
+        return ResponseEntity.ok(ApiResponse.ok(subscriptionService.getMyList(phone)));
+    }
 }
