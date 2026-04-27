@@ -33,6 +33,7 @@ public class SubscriptionController {
             @RequestBody @Valid SubscriptionRequestDto request) {
 
         SubscriptionResponseDto response = subscriptionService.create(request);
+        log.info("계약저장완료");
         // ⚠️ 보안 추가: 개인정보 로그 제외
         return ResponseEntity
                 .status(HttpStatus.CREATED)
