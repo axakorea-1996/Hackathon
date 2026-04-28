@@ -19,7 +19,6 @@ FINAL_FIELD_RE = re.compile(
 )
 ANNOTATION_RE = re.compile(r"^\s*@(\w+)", re.MULTILINE)
 
-# ── 프롬프트 인젝션 패턴 ──────────────────────────
 INJECTION_PATTERNS = [
     re.compile(r"(?i)(ignore|forget|disregard).{0,30}(above|previous|instruction|prompt)"),
     re.compile(r"(?i)\[SYSTEM\]|\[INST\]|\[\/INST\]"),
@@ -32,19 +31,17 @@ INJECTION_PATTERNS = [
 
 @dataclass
 class ChangedMethod:
-    file_path:      str
-    package_name:   str | None
-    class_name:     str | None
-    method_name:    str
-    start_line:     int
-    end_line:       int
+    file_path: str
+    package_name: str | None
+    class_name: str | None
+    method_name: str
+    start_line: int
+    end_line: int
     signature_line: str
-    code:           str
+    code: str
 
 
-# ── 프롬프트 인젝션 방어 ──────────────────────────
 def sanitize_for_prompt(text: str, max_length: int = 25000) -> str:
-    """AI 프롬프트에 삽입되는 코드/텍스트 sanitize"""
     if not text:
         return ""
 
@@ -60,6 +57,11 @@ def sanitize_for_prompt(text: str, max_length: int = 25000) -> str:
 def safe_slug(text: str) -> str:
     text = re.sub(r"[^A-Za-z0-9_\\-\\.]+", "_", text)
     return text.strip("_") or "unknown"
+
+
+def is_private_method(method: ChangedMethod) -> bool:
+    signature = method.signature_line.strip()
+    return signature.startswith("private ")
 
 
 def run_git_command(args: list[str]) -> str:
@@ -124,16 +126,16 @@ def read_file_safe(path: Path, max_chars: int = 10000) -> str:
 
 
 def collect_primary_class_context(method: ChangedMethod, repo_root: Path) -> dict[str, Any]:
-    abs_path        = repo_root / method.file_path
+    abs_path = repo_root / method.file_path
     full_class_code = read_file_safe(abs_path, max_chars=25000)
-    imports         = collect_imported_types(full_class_code)
-    dependencies    = FINAL_FIELD_RE.findall(full_class_code)
-    annotations     = ANNOTATION_RE.findall(full_class_code)
+    imports = collect_imported_types(full_class_code)
+    dependencies = FINAL_FIELD_RE.findall(full_class_code)
+    annotations = ANNOTATION_RE.findall(full_class_code)
 
     return {
-        "absolute_path":   str(abs_path),
+        "absolute_path": str(abs_path),
         "full_class_code": full_class_code,
-        "imports":         imports,
+        "imports": imports,
         "dependencies": [
             {"type": dep_type.strip(), "name": dep_name.strip()}
             for dep_type, dep_name in dependencies
@@ -147,12 +149,12 @@ def collect_related_files(
     repo_root: Path,
     max_files: int = 8,
 ) -> list[dict[str, str]]:
-    abs_path        = repo_root / method.file_path
+    abs_path = repo_root / method.file_path
     full_class_code = read_file_safe(abs_path, max_chars=25000)
-    imports         = collect_imported_types(full_class_code)
+    imports = collect_imported_types(full_class_code)
 
     related: list[dict[str, str]] = []
-    seen:    set[str]              = set()
+    seen: set[str] = set()
 
     for fqcn in imports:
         if fqcn.startswith(("java.", "jakarta.", "org.springframework.", "lombok.")):
@@ -167,10 +169,12 @@ def collect_related_files(
             continue
 
         seen.add(norm)
-        related.append({
-            "file_path": str(path.relative_to(repo_root)),
-            "code":      read_file_safe(path, max_chars=15000),
-        })
+        related.append(
+            {
+                "file_path": str(path.relative_to(repo_root)),
+                "code": read_file_safe(path, max_chars=15000),
+            }
+        )
 
         if len(related) >= max_files:
             break
@@ -179,22 +183,21 @@ def collect_related_files(
 
 
 def build_direct_junit_prompt(
-    method:        ChangedMethod,
+    method: ChangedMethod,
     class_context: dict[str, Any],
     related_files: list[dict[str, str]],
 ) -> str:
     safe_class_name = method.class_name or "UnknownClass"
 
-    # ✅ 프롬프트 인젝션 방어 적용
-    safe_method_code    = sanitize_for_prompt(method.code,                       10000)
-    safe_class_code     = sanitize_for_prompt(class_context["full_class_code"],  25000)
-    safe_signature_line = sanitize_for_prompt(method.signature_line,              500)
-    safe_related_text   = sanitize_for_prompt(
+    safe_method_code = sanitize_for_prompt(method.code, 10000)
+    safe_class_code = sanitize_for_prompt(class_context["full_class_code"], 25000)
+    safe_signature_line = sanitize_for_prompt(method.signature_line, 500)
+    safe_related_text = sanitize_for_prompt(
         "\n\n".join(
             f"[Related File] {item['file_path']}\n{item['code']}"
             for item in related_files
         ),
-        30000
+        30000,
     )
 
     return f"""
@@ -231,6 +234,12 @@ Required test style rules:
 9. Create 2 to 4 meaningful test methods maximum.
 10. Prefer deterministic assertions over weak assertions.
 11. Keep the test tightly scoped to the changed method and nearby logic.
+12. Never directly call private methods from the generated test class.
+13. If the changed method is private:
+   - Do NOT generate tests that call the private method directly.
+   - Test it indirectly through a visible public or package-private method that calls it.
+   - If no suitable caller is visible in the provided code, generate a minimal compilable test class with no test methods and a comment explaining that test generation was skipped because the changed method is private.
+14. Only generate test methods that call methods accessible from the generated test class.
 
 Very important traceability requirement:
 At the top of the generated Java class, include a comment block exactly like this shape:
@@ -258,6 +267,7 @@ class_name: {safe_class_name}
 method_name: {method.method_name}
 file_path: {method.file_path}
 signature_line: {safe_signature_line}
+is_private_method: {str(is_private_method(method)).lower()}
 line_range: {method.start_line}-{method.end_line}
 
 [Changed Method Code]
@@ -285,26 +295,26 @@ def save_text(path: Path, content: str) -> None:
 
 
 def build_prompt_log_paths(
-    repo_root:      Path,
+    repo_root: Path,
     prompt_log_dir: str,
-    method:         ChangedMethod,
+    method: ChangedMethod,
 ) -> dict[str, Path]:
-    class_name  = safe_slug(method.class_name or "UnknownClass")
+    class_name = safe_slug(method.class_name or "UnknownClass")
     method_name = safe_slug(method.method_name)
-    line_range  = f"{method.start_line}_{method.end_line}"
-    base_name   = f"{class_name}__{method_name}__{line_range}"
-    base_dir    = repo_root / prompt_log_dir
+    line_range = f"{method.start_line}_{method.end_line}"
+    base_name = f"{class_name}__{method_name}__{line_range}"
+    base_dir = repo_root / prompt_log_dir
 
     return {
-        "prompt_txt":   base_dir / f"{base_name}__prompt.txt",
+        "prompt_txt": base_dir / f"{base_name}__prompt.txt",
         "response_txt": base_dir / f"{base_name}__response.txt",
-        "meta_json":    base_dir / f"{base_name}__meta.json",
+        "meta_json": base_dir / f"{base_name}__meta.json",
     }
 
 
 def generate_direct_junit_code(prompt: str) -> tuple[str, str, str]:
-    client         = create_client()
-    selected_model = os.getenv("OPENAI_MODEL", "openai/gpt-4.1-mini")
+    client = create_client()
+    selected_model = os.getenv("OPENAI_MODEL", "openai/gpt-4.1-mini").strip()
 
     response = client.chat.completions.create(
         model=selected_model,
@@ -312,7 +322,7 @@ def generate_direct_junit_code(prompt: str) -> tuple[str, str, str]:
         temperature=0,
     )
 
-    raw_text     = response.choices[0].message.content or ""
+    raw_text = response.choices[0].message.content or ""
     cleaned_java = sanitize_java_code_block(raw_text)
     return cleaned_java, raw_text, selected_model
 
@@ -324,13 +334,13 @@ def package_to_path(package_name: str | None) -> Path:
 
 
 def save_generated_test(
-    java_code:    str,
+    java_code: str,
     package_name: str | None,
-    class_name:   str | None,
-    output_root:  Path,
+    class_name: str | None,
+    output_root: Path,
 ) -> Path:
     safe_class_name = class_name or "UnknownClass"
-    output_dir      = output_root / package_to_path(package_name)
+    output_dir = output_root / package_to_path(package_name)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"{safe_class_name}GeneratedTest.java"
@@ -365,8 +375,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    repo_root   = get_repo_root()
-    methods     = load_changed_methods(args.changed_methods_json, repo_root)
+    repo_root = get_repo_root()
+    methods = load_changed_methods(args.changed_methods_json, repo_root)
     output_root = (
         repo_root / args.output_dir
         if not Path(args.output_dir).is_absolute()
@@ -380,6 +390,25 @@ def main() -> None:
     summary: list[dict[str, str]] = []
 
     for method in methods:
+        if is_private_method(method):
+            print(
+                f"[SKIP] Private method detected. "
+                f"Skipping direct test generation: {method.class_name}.{method.method_name}"
+            )
+
+            summary.append(
+                {
+                    "method_name": method.method_name,
+                    "source_file": method.file_path,
+                    "generated_test_file": "",
+                    "prompt_file": "",
+                    "response_file": "",
+                    "meta_file": "",
+                    "skip_reason": "private_method",
+                }
+            )
+            continue
+
         class_context = collect_primary_class_context(method, repo_root)
         related_files = collect_related_files(
             method,
@@ -387,8 +416,8 @@ def main() -> None:
             max_files=args.max_related_files,
         )
 
-        prompt                                   = build_direct_junit_prompt(method, class_context, related_files)
-        java_code, raw_response, selected_model  = generate_direct_junit_code(prompt)
+        prompt = build_direct_junit_prompt(method, class_context, related_files)
+        java_code, raw_response, selected_model = generate_direct_junit_code(prompt)
 
         log_paths = build_prompt_log_paths(
             repo_root=repo_root,
@@ -396,19 +425,20 @@ def main() -> None:
             method=method,
         )
 
-        save_text(log_paths["prompt_txt"],  prompt)
+        save_text(log_paths["prompt_txt"], prompt)
         save_text(log_paths["response_txt"], raw_response)
         save_text(
             log_paths["meta_json"],
             json.dumps(
                 {
-                    "source_file":   method.file_path,
+                    "source_file": method.file_path,
                     "source_method": method.method_name,
-                    "class_name":    method.class_name,
-                    "start_line":    method.start_line,
-                    "end_line":      method.end_line,
-                    "model":         selected_model,
-                    "package_name":  method.package_name,
+                    "class_name": method.class_name,
+                    "start_line": method.start_line,
+                    "end_line": method.end_line,
+                    "model": selected_model,
+                    "package_name": method.package_name,
+                    "is_private_method": is_private_method(method),
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -422,14 +452,17 @@ def main() -> None:
             output_root=output_root,
         )
 
-        summary.append({
-            "method_name":          method.method_name,
-            "source_file":          method.file_path,
-            "generated_test_file":  str(output_file.relative_to(repo_root)),
-            "prompt_file":          str(log_paths["prompt_txt"].relative_to(repo_root)),
-            "response_file":        str(log_paths["response_txt"].relative_to(repo_root)),
-            "meta_file":            str(log_paths["meta_json"].relative_to(repo_root)),
-        })
+        summary.append(
+            {
+                "method_name": method.method_name,
+                "source_file": method.file_path,
+                "generated_test_file": str(output_file.relative_to(repo_root)),
+                "prompt_file": str(log_paths["prompt_txt"].relative_to(repo_root)),
+                "response_file": str(log_paths["response_txt"].relative_to(repo_root)),
+                "meta_file": str(log_paths["meta_json"].relative_to(repo_root)),
+                "skip_reason": "",
+            }
+        )
 
         print(f"Generated direct JUnit test: {output_file}")
 
