@@ -229,7 +229,6 @@ jobs:
         working-directory: subscription
         run: |
           chmod +x ./gradlew
-          # ✅ GeneratedTest 파일 없으면 스킵
           TEST_COUNT=$(find src/test/java -name '*GeneratedTest.java' 2>/dev/null | wc -l)
           if [ "$TEST_COUNT" -eq 0 ]; then
             echo "생성된 테스트 없음 - 스킵"
@@ -268,15 +267,29 @@ jobs:
   ui-test:
     needs: create-pr
     runs-on: ubuntu-latest
-    # ✅ playwright 전용 Docker 이미지 사용 (설치 시간 5분 → 3초)
-    container:
-      image: mcr.microsoft.com/playwright/python:v1.58.0-noble
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Python dependencies
-        run: pip install requests  # ✅ requests만 설치
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python + Playwright
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v3
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
 
       - name: Run UI Test
         env:
