@@ -133,11 +133,6 @@ public class CodeReviewAgent {
             - 보안 강화를 위한 구체적인 개선 방안
             (내용)
 
-            ### 4. 📝 총평 (전체적인 코드 품질 점수: X / 10)
-            (내용)
-
-            ### 5. 💡 수정 예시 코드 (필요한 경우)
-            (내용)
             """.formatted(prTitle, diff);
     }
 
