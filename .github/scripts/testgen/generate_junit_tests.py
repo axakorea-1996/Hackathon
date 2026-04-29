@@ -294,7 +294,11 @@ Required test style rules:
 8. If object construction is needed:
    - prefer builder() only if clearly present in the provided class
    - otherwise use constructor/setter style only if clearly supported by the provided class
-9. Create 2 to 4 meaningful test methods maximum.
+   - CRITICAL: For Lombok @AllArgsConstructor, check the EXACT field order and types
+     from the provided class definition before calling the constructor
+   - CRITICAL: For LocalDate fields, use LocalDate.of(2024, 1, 1) not null or String
+   - CRITICAL: If constructor signature is unclear, use builder() pattern instead
+   - CRITICAL: Never guess constructor parameter order - derive it from field declarations
 10. Prefer deterministic assertions over weak assertions.
 11. Keep the test tightly scoped to the changed method and nearby logic.
 12. Never directly call private methods from the generated test class.
