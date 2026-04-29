@@ -179,6 +179,9 @@ public class ImpactAnalysisAgent {
                 8. 노드 이름에 특수문자(괄호, 슬래시, 점 등)를 사용하지 마세요
                 9. style 명령어에는 반드시 노드 ID만 사용하세요
                 10. DB 노드는 노드 정의와 style을 반드시 분리하세요
+                11. 모든 노드는 반드시 대괄호[] 형식만 사용하세요
+                                올바른 예시: A[ClassName]
+                                절대 사용 금지: A((ClassName)), A{ClassName}, A[(ClassName)]
                 """;
     }
 
