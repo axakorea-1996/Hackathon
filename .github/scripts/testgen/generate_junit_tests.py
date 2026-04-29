@@ -271,7 +271,19 @@ Required test style rules:
    - @InjectMocks
    - when(...).thenReturn(...)
 5. If the changed class is clearly a controller, prefer MockMvc tests.
-6. Import every referenced class explicitly if needed.
+6. CRITICAL - Import statements (missing imports = compilation failure):
+   - ALWAYS include this exact import for the class under test:
+     {required_import}
+   - ALWAYS include imports for ALL dependencies, DTOs, domain objects used in tests
+   - ALWAYS include ALL of the following that are used:
+     import org.junit.jupiter.api.Test;
+     import org.junit.jupiter.api.extension.ExtendWith;
+     import org.mockito.junit.jupiter.MockitoExtension;
+     import org.mockito.Mock;
+     import org.mockito.InjectMocks;
+     import static org.mockito.Mockito.*;
+     import static org.assertj.core.api.Assertions.*;
+   - NEVER omit any import that is referenced in the test code
 7. Do not invent repository methods, DTO fields, builders, or constructors that are not visible in the provided code.
 8. If object construction is needed:
    - prefer builder() only if clearly present in the provided class
