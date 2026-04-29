@@ -214,7 +214,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_BASE_URL: https://openrouter.ai/api/v1
-          OPENAI_MODEL: openai/gpt-4o-mini
+          OPENAI_MODEL: openai/gpt-5.2-pro
         run: |
           python .github/scripts/testgen/generate_junit_tests.py \
             --changed-methods-json outputs/changed_methods.json \
@@ -268,29 +268,15 @@ jobs:
   ui-test:
     needs: create-pr
     runs-on: ubuntu-latest
+    # ✅ playwright 전용 Docker 이미지 사용 (설치 시간 5분 → 3초)
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.58.0-noble
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies
-        run: |
-          pip install playwright requests
-          playwright install chromium --with-deps
+      - name: Install Python dependencies
+        run: pip install requests  # ✅ requests만 설치
 
       - name: Run UI Test
         env:
@@ -299,6 +285,7 @@ jobs:
           PR_NUMBER: ${{ needs.create-pr.outputs.pr_number }}
           REPO: ${{ github.repository }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_MODEL: openai/gpt-5.2-pro
         run: |
           python3 -u .github/scripts/ui_test_agent.py
 
