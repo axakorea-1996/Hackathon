@@ -138,6 +138,9 @@ public class CodeReviewAgent {
             - 수정이 필요한 부분만 발췌하여 before/after 형식으로 작성
             - 수정 사항이 없으면 "수정 예시 없음" 으로 명시
             (내용)           
+            
+            ### 5. 📝 총평 (전체적인 코드 품질 점수: X / 10)
+            (내용)                
             """.formatted(prTitle, diff);
     }
 
