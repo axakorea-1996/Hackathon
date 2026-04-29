@@ -64,6 +64,49 @@ def is_private_method(method: ChangedMethod) -> bool:
     return signature.startswith("private ")
 
 
+def find_public_callers_for_private_method(
+    private_method: ChangedMethod,
+    class_context: dict[str, Any],
+) -> list[str]:
+    """
+    PoC용 간단 탐색:
+    private 메서드명을 클래스 전체 코드에서 찾고,
+    그 주변에 있는 public 메서드 선언을 caller 후보로 잡는다.
+    """
+    full_code = class_context.get("full_class_code", "")
+    lines = full_code.splitlines()
+    target_call = private_method.method_name + "("
+
+    public_method_re = re.compile(
+        r"^\s*public\s+[\w\<\>\[\],\s?\.]+\s+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:throws\s+[^{]+)?\{"
+    )
+
+    callers: list[str] = []
+    current_public_method: str | None = None
+    brace_balance = 0
+    in_public_method = False
+
+    for line in lines:
+        match = public_method_re.match(line)
+
+        if match:
+            current_public_method = match.group(1)
+            in_public_method = True
+            brace_balance = line.count("{") - line.count("}")
+        elif in_public_method:
+            brace_balance += line.count("{") - line.count("}")
+
+        if in_public_method and current_public_method and target_call in line:
+            callers.append(current_public_method)
+
+        if in_public_method and brace_balance <= 0:
+            current_public_method = None
+            in_public_method = False
+            brace_balance = 0
+
+    return sorted(set(callers))
+
+
 def run_git_command(args: list[str]) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -186,7 +229,9 @@ def build_direct_junit_prompt(
     method: ChangedMethod,
     class_context: dict[str, Any],
     related_files: list[dict[str, str]],
+    private_callers: list[str] | None = None,
 ) -> str:
+    private_callers = private_callers or []
     safe_class_name = method.class_name or "UnknownClass"
 
     safe_method_code = sanitize_for_prompt(method.code, 10000)
@@ -237,8 +282,10 @@ Required test style rules:
 12. Never directly call private methods from the generated test class.
 13. If the changed method is private:
    - Do NOT generate tests that call the private method directly.
-   - Test it indirectly through a visible public or package-private method that calls it.
-   - If no suitable caller is visible in the provided code, generate a minimal compilable test class with no test methods and a comment explaining that test generation was skipped because the changed method is private.
+   - Use one of the provided public_caller_candidates_for_private_method as the test target.
+   - The generated test must call the public caller, not the private method.
+   - Validate the externally observable behavior caused by the private method change.
+   - If public_caller_candidates_for_private_method is empty, do not generate test methods.
 14. Only generate test methods that call methods accessible from the generated test class.
 
 Very important traceability requirement:
@@ -268,6 +315,7 @@ method_name: {method.method_name}
 file_path: {method.file_path}
 signature_line: {safe_signature_line}
 is_private_method: {str(is_private_method(method)).lower()}
+public_caller_candidates_for_private_method: {json.dumps(private_callers, ensure_ascii=False)}
 line_range: {method.start_line}-{method.end_line}
 
 [Changed Method Code]
@@ -390,33 +438,48 @@ def main() -> None:
     summary: list[dict[str, str]] = []
 
     for method in methods:
-        if is_private_method(method):
-            print(
-                f"[SKIP] Private method detected. "
-                f"Skipping direct test generation: {method.class_name}.{method.method_name}"
-            )
-
-            summary.append(
-                {
-                    "method_name": method.method_name,
-                    "source_file": method.file_path,
-                    "generated_test_file": "",
-                    "prompt_file": "",
-                    "response_file": "",
-                    "meta_file": "",
-                    "skip_reason": "private_method",
-                }
-            )
-            continue
-
         class_context = collect_primary_class_context(method, repo_root)
+
+        private_callers: list[str] = []
+        if is_private_method(method):
+            private_callers = find_public_callers_for_private_method(method, class_context)
+
+            if not private_callers:
+                print(
+                    f"[SKIP] Private method detected, but no public caller found. "
+                    f"Skipping direct test generation: {method.class_name}.{method.method_name}"
+                )
+
+                summary.append(
+                    {
+                        "method_name": method.method_name,
+                        "source_file": method.file_path,
+                        "generated_test_file": "",
+                        "prompt_file": "",
+                        "response_file": "",
+                        "meta_file": "",
+                        "skip_reason": "private_method_no_public_caller",
+                    }
+                )
+                continue
+
+            print(
+                f"[INFO] Private method detected: {method.class_name}.{method.method_name}. "
+                f"Public caller candidates: {private_callers}"
+            )
+
         related_files = collect_related_files(
             method,
             repo_root,
             max_files=args.max_related_files,
         )
 
-        prompt = build_direct_junit_prompt(method, class_context, related_files)
+        prompt = build_direct_junit_prompt(
+            method,
+            class_context,
+            related_files,
+            private_callers=private_callers,
+        )
         java_code, raw_response, selected_model = generate_direct_junit_code(prompt)
 
         log_paths = build_prompt_log_paths(
