@@ -245,6 +245,12 @@ def build_direct_junit_prompt(
         30000,
     )
 
+    required_import = (
+            f"import {method.package_name}.{safe_class_name};"
+            if method.package_name
+            else f"// package unknown for {safe_class_name}"
+    )
+
     return f"""
 You are an expert Java backend test generation assistant.
 
