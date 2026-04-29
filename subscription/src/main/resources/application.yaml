@@ -22,6 +22,16 @@ spring:
         max-size: 8
         queue-capacity: 100
 
+  # ✅ JPA 설정 추가 (data.sql 실행 전 테이블 먼저 생성)
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+
 logging:
   level:
     com.axakorea: DEBUG
