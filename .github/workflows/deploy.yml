@@ -229,6 +229,12 @@ jobs:
         working-directory: subscription
         run: |
           chmod +x ./gradlew
+          # ✅ GeneratedTest 파일 없으면 스킵
+          TEST_COUNT=$(find src/test/java -name '*GeneratedTest.java' 2>/dev/null | wc -l)
+          if [ "$TEST_COUNT" -eq 0 ]; then
+            echo "생성된 테스트 없음 - 스킵"
+            exit 0
+          fi
           ./gradlew test \
             --tests "*GeneratedTest*" \
             --parallel \

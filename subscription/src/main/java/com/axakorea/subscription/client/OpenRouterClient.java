@@ -29,7 +29,7 @@ public class OpenRouterClient {
     public OpenRouterClient() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000);  // 10초
-        factory.setReadTimeout(60000);     // 60초
+        factory.setReadTimeout(1200000);     // 120초
         this.restTemplate = new RestTemplate(factory);
     }
 
