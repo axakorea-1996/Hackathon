@@ -29,7 +29,9 @@ public class VehicleService {
         // 1) 고객 조회
         Customer customer = customerRepo.findByPhone(req.getCustomerPhone())
                 .orElseThrow(() -> new NotFoundException(
+
                         "고객을 찾을 수 없습니다!: " + req.getCustomerPhone()));
+
 
         // 2) 중복 차량 체크
         if (vehicleRepo.findByPlateNumber(req.getPlateNumber()).isPresent()) {
