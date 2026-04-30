@@ -134,14 +134,19 @@ def get_changed_line_ranges(
         add_start = int(match.group(3))
         add_count = int(match.group(4)) if match.group(4) is not None else 1
 
+        # ✅ 신규 파일 추가인 경우 (@@ -0,0 +1,XX @@)
+        if del_start == 0 and del_count == 0 and add_count > 0:
+            end_line = add_start + add_count - 1
+            changed_ranges.append((add_start, end_line))
+            print(f"[RANGES] 신규 파일 전체: {add_start}-{end_line}")
+
         # ✅ 추가된 라인이 있는 경우
-        if add_count > 0:
+        elif add_count > 0:
             end_line = add_start + add_count - 1
             changed_ranges.append((add_start, end_line))
             print(f"[RANGES] 추가 라인: {add_start}-{end_line}")
 
         # ✅ 삭제만 있는 경우 (add_count=0)
-        # 삭제된 라인 위치도 메서드 감지에 사용
         elif del_count > 0:
             end_line = del_start + del_count - 1
             changed_ranges.append((del_start, end_line))
