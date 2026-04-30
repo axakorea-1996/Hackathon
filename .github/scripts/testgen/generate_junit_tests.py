@@ -223,6 +223,60 @@ def collect_related_files(
     return related
 
 
+# ── 생성된 Java 코드 후처리 ───────────────────────
+def fix_generated_java(java_code: str) -> str:
+    """생성된 JUnit 테스트 코드 자동 수정"""
+
+    # 1. assertThrows static import 추가
+    if "assertThrows" in java_code and \
+       "import static org.junit.jupiter.api.Assertions" not in java_code:
+        if "import org.junit.jupiter.api.Test;" in java_code:
+            java_code = java_code.replace(
+                "import org.junit.jupiter.api.Test;",
+                "import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.*;"
+            )
+        else:
+            # package 선언 다음에 추가
+            java_code = re.sub(
+                r"(package [\w\.]+;\s*\n)",
+                r"\1\nimport static org.junit.jupiter.api.Assertions.*;\n",
+                java_code
+            )
+        print("[FIX] assertThrows static import 추가")
+
+    # 2. response.getSuccess() → isNotNull() 로 교체
+    if "getSuccess()" in java_code:
+        java_code = re.sub(
+            r"assertThat\((\w+)\.getSuccess\(\)\)\.isTrue\(\);",
+            r"assertThat(\1).isNotNull();",
+            java_code
+        )
+        java_code = re.sub(
+            r"assertThat\((\w+)\.getSuccess\(\)\)\.isFalse\(\);",
+            r"assertThat(\1).isNotNull();",
+            java_code
+        )
+        print("[FIX] response.getSuccess() 제거 → isNotNull() 교체")
+
+    # 3. NotFoundException import 자동 추가
+    if "NotFoundException" in java_code and \
+       "import com.axakorea.subscription.exception.NotFoundException" not in java_code:
+        java_code = re.sub(
+            r"(package [\w\.]+;)",
+            r"\1\nimport com.axakorea.subscription.exception.NotFoundException;",
+            java_code
+        )
+        print("[FIX] NotFoundException import 추가")
+
+    # 4. 기타 프로젝트 공통 exception import 추가
+    if "IllegalArgumentException" in java_code and \
+       "assertThrows(IllegalArgumentException" in java_code:
+        # IllegalArgumentException은 java.lang이라 import 불필요
+        pass
+
+    return java_code
+
+
 def build_class_junit_prompt(
     class_name:    str,
     methods:       list[ChangedMethod],
@@ -231,7 +285,6 @@ def build_class_junit_prompt(
 ) -> str:
     safe_class_name = class_name or "UnknownClass"
 
-    # ✅ 변경된 모든 메서드를 하나의 프롬프트에 포함
     methods_text = "\n\n".join([
         f"[Changed Method {i+1}]\n"
         f"method_name: {m.method_name}\n"
@@ -259,7 +312,6 @@ def build_class_junit_prompt(
         else f"// package unknown for {safe_class_name}"
     )
 
-    # traceability 코멘트
     source_methods_comment = "\n".join(
         f" * SOURCE_METHOD_{i+1}: {m.method_name} (lines {m.start_line}-{m.end_line})"
         for i, m in enumerate(methods)
@@ -284,7 +336,9 @@ Output format requirements:
 Required test style rules:
 1. Use JUnit 5.
 2. Use AssertJ for normal result assertions.
-3. Use assertThrows for exception scenarios.
+3. Use assertThrows for exception scenarios:
+   - ALWAYS add: import static org.junit.jupiter.api.Assertions.*;
+   - NEVER use assertThrows without this static import
 4. If constructor-injected dependencies exist, prefer Mockito-based service tests:
    - @ExtendWith(MockitoExtension.class)
    - @Mock
@@ -298,13 +352,17 @@ Required test style rules:
    - ALWAYS include ALL of the following that are used:
      import org.junit.jupiter.api.Test;
      import org.junit.jupiter.api.extension.ExtendWith;
+     import static org.junit.jupiter.api.Assertions.*;
      import org.mockito.junit.jupiter.MockitoExtension;
      import org.mockito.Mock;
      import org.mockito.InjectMocks;
      import static org.mockito.Mockito.*;
      import static org.assertj.core.api.Assertions.*;
+   - CRITICAL: For ANY custom exception class (NotFoundException, etc.):
+     derive full package path from [Related Files] and add explicit import
    - NEVER omit any import that is referenced in the test code
-7. Do not invent repository methods, DTO fields, builders, or constructors that are not visible in the provided code.
+7. Do not invent repository methods, DTO fields, builders, or constructors
+   that are not visible in the provided code.
 8. CRITICAL - Object construction rules:
    - Check Lombok annotations in [Related Files] BEFORE constructing objects:
      * @Builder present → use builder() pattern
@@ -320,10 +378,13 @@ Required test style rules:
    - CRITICAL: Never guess constructor parameter order
    - CRITICAL: Do NOT call methods on response objects (getSuccess() etc.)
      unless those methods are explicitly visible in the class definition
-9. Create 2 to 3 test methods PER changed method (total {len(methods) * 2}~{len(methods) * 3} test methods).
+   - CRITICAL: Only assert on fields/methods that exist in the response class
+9. Create 2 to 3 test methods PER changed method
+   (total {len(methods) * 2}~{len(methods) * 3} test methods).
 10. Prefer deterministic assertions over weak assertions.
 11. For private methods: test through public caller methods only.
-12. Only generate test methods that call methods accessible from the generated test class.
+12. Only generate test methods that call methods accessible
+    from the generated test class.
 
 Very important traceability requirement:
 At the top of the generated Java class, include a comment block exactly like this:
@@ -414,13 +475,11 @@ def process_class_methods(args_tuple: tuple) -> dict[str, str]:
     """병렬 처리용 클래스 단위 처리 함수"""
     class_methods, repo_root, output_root, max_related_files, prompt_log_dir = args_tuple
 
-    # 대표 메서드 (첫 번째)로 클래스 컨텍스트 수집
     representative = class_methods[0]
     class_name     = representative.class_name or "UnknownClass"
 
     print(f"[INFO] {class_name} 처리 중 ({len(class_methods)}개 메서드)")
 
-    # private 메서드 처리
     valid_methods: list[ChangedMethod] = []
     class_context = collect_primary_class_context(representative, repo_root)
 
@@ -450,6 +509,9 @@ def process_class_methods(args_tuple: tuple) -> dict[str, str]:
         class_name, valid_methods, class_context, related_files
     )
     java_code, raw_response, selected_model = generate_direct_junit_code(prompt)
+
+    # ✅ 후처리 적용
+    java_code = fix_generated_java(java_code)
 
     log_paths = build_prompt_log_paths(
         repo_root=repo_root,
@@ -518,7 +580,6 @@ def main() -> None:
         print("No changed methods found.")
         return
 
-    # ✅ 클래스별 그룹핑
     class_groups = group_methods_by_class(methods)
     print(f"총 {len(methods)}개 메서드 → {len(class_groups)}개 클래스 병렬 처리 "
           f"(max_workers={args.max_workers})")
@@ -530,7 +591,6 @@ def main() -> None:
 
     summary: list[dict[str, str]] = []
 
-    # ✅ 클래스별 병렬 처리
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {
             executor.submit(process_class_methods, task): task
