@@ -305,12 +305,21 @@ Required test style rules:
      import static org.assertj.core.api.Assertions.*;
    - NEVER omit any import that is referenced in the test code
 7. Do not invent repository methods, DTO fields, builders, or constructors that are not visible in the provided code.
-8. If object construction is needed:
-   - prefer builder() only if clearly present in the provided class
-   - CRITICAL: For Lombok @AllArgsConstructor, check the EXACT field order and types
-   - CRITICAL: For LocalDate fields, use LocalDate.of(2024, 1, 1) not null or String
-   - CRITICAL: If constructor signature is unclear, use builder() pattern instead
-   - CRITICAL: Never guess constructor parameter order - derive it from field declarations
+8. CRITICAL - Object construction rules:
+   - Check Lombok annotations in [Related Files] BEFORE constructing objects:
+     * @Builder present → use builder() pattern
+     * @AllArgsConstructor present → use all-args constructor
+       (derive field order strictly from top-to-bottom field declarations)
+     * Only @Getter + @NoArgsConstructor → use no-args constructor ONLY
+       then use setter IF AND ONLY IF @Setter is present
+     * CRITICAL: NEVER use setter methods (setXxx()) unless @Setter is
+       explicitly visible in the class definition
+     * CRITICAL: If only @Getter + @NoArgsConstructor with no @Setter:
+       skip object field assignment and use mock/stub instead
+   - CRITICAL: For LocalDate fields, use LocalDate.of(2024, 1, 1)
+   - CRITICAL: Never guess constructor parameter order
+   - CRITICAL: Do NOT call methods on response objects (getSuccess() etc.)
+     unless those methods are explicitly visible in the class definition
 9. Create 2 to 3 test methods PER changed method (total {len(methods) * 2}~{len(methods) * 3} test methods).
 10. Prefer deterministic assertions over weak assertions.
 11. For private methods: test through public caller methods only.
