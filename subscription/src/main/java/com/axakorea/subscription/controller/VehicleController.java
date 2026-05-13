@@ -25,11 +25,6 @@ public class VehicleController {
         return ApiResponse.ok(vehicleService.register(req));
     }
 
-    // ── API 2. 내 차량 목록 조회 ──────────────────────
-    @GetMapping("/myList")
-    public ApiResponse<List<VehicleResponseDto>> getMyVehicles(
-            @RequestParam String phone) {
-        return ApiResponse.ok(vehicleService.getMyVehicles(phone));
-    }
+
 }
 
